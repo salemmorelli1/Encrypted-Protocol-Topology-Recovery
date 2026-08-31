@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "encrypted-topology-recovery"
+version = "1.0.1"
+description = "Privacy-minimized Hawkes-flow DSBM inference for authorized packet-metadata streams"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Salem Morelli"}]
+dependencies = [
+  "numpy>=1.26,<3",
+  "scipy>=1.11,<2",
+  "pandas>=2.1,<4",
+  "scikit-learn>=1.4,<2",
+  "statsmodels>=0.14,<1",
+  "networkx>=3.2,<4",
+  "torch>=2.2,<3",
+  "scapy>=2.5,<3",
+]
+
+[project.optional-dependencies]
+report = ["matplotlib>=3.8,<4", "reportlab>=4,<6", "pypdf>=5,<7"]
+dev = ["pytest>=8,<10", "ruff>=0.6,<1"]
+
+[project.scripts]
+encrypted-topology = "encrypted_topology.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 96
+target-version = "py311"

@@ -1,0 +1,25 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+output/
+tmp/
+*.egg-info/
+
+# Packet-derived material and local pseudonym key never enter Git.
+data/private/
+data/captures/
+data/results/
+*.pcap
+*.pcapng
+*.cap
+*.key
+*.salt
+
+# Local capture configuration.
+.env
+.env.local
+credentials*.json

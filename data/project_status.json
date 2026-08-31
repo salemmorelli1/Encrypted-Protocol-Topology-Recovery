@@ -1,0 +1,16 @@
+{
+  "schema": "encrypted-topology-project-status-v1",
+  "version": "1.0.0",
+  "status": "methodology_ready_live_execution_pending",
+  "capture_backends": ["scapy", "tshark"],
+  "payload_retained": false,
+  "authorized_capture_required": true,
+  "controlled_truth_factorial_complete": false,
+  "live_capture_executed": false,
+  "live_topology_truth_available": false,
+  "operational_sigint_claim": false,
+  "planned_seeds": 100,
+  "planned_factorial_cells": 1800,
+  "report_pages": 27
+}
+
