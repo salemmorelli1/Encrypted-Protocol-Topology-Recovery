@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "encrypted-topology-recovery"
-version = "1.0.1"
+version = "1.0.2"
 description = "Privacy-minimized Hawkes-flow DSBM inference for authorized packet-metadata streams"
 readme = "README.md"
 requires-python = ">=3.11"

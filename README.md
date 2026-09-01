@@ -111,6 +111,13 @@ encrypted-topology analyze --seeds 100
 
 Primary controlled-truth endpoints are link AUC, held-out binary link log score, and synchronized compute latency per event. Self-normalized importance ESS is reported only for the variational architecture and is **not** treated as a cross-method MCMC mixing endpoint. Rank-normalized \(\widehat R\) is included only for genuine multi-chain draws, never as an ordinary variational diagnostic.
 
+Analyzer v1.0.2 records the input CSV's SHA-256 digest, reports seed-paired tests with Holm
+adjustment across the nine conditions within each endpoint, and uses a diagnostic-aware
+model hierarchy: random intercept plus architecture slope, random intercept only, then the
+same factorial fixed design with seed-clustered standard errors. The summary retains every
+fit attempt and its rejection reasons. This is an inferential hardening release; it does not
+rerun or alter any experimental cell.
+
 ## Repository map
 
 ```text

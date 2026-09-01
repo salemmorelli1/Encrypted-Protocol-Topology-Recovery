@@ -11,5 +11,4 @@ __all__ = [
     "exponential_hawkes_log_likelihood",
 ]
 
-__version__ = "1.0.0"
-
+__version__ = "1.0.2"

@@ -1,6 +1,6 @@
 {
   "schema": "encrypted-topology-project-status-v1",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "status": "methodology_ready_live_execution_pending",
   "capture_backends": ["scapy", "tshark"],
   "payload_retained": false,
@@ -13,4 +13,3 @@
   "planned_factorial_cells": 1800,
   "report_pages": 27
 }
-

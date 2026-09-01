@@ -19,7 +19,26 @@ Estimate the architecture effect and its interactions with obfuscation and graph
 
 ## Analysis
 
-No cell is analyzed until all expected cells exist. Architecture is sum-coded; ordered three-level factors use orthogonal linear and quadratic contrasts. Report estimates with 95% confidence intervals and multiplicity-controlled interaction follow-ups. Latency is log-transformed if right skew is material. Failed fits remain in the denominator and are reported as a separate reliability endpoint rather than silently discarded.
+No cell is analyzed until all expected cells exist. Architecture is sum-coded; ordered
+three-level factors use orthogonal linear and quadratic contrasts. The condition-specific
+architecture comparisons are paired by seed. Each endpoint's family of nine comparisons
+reports a paired *t* estimate, an unadjusted 95% confidence interval, a two-sided raw
+*p* value, and a Holm-adjusted *p* value controlling familywise error across the nine
+conditions.
+
+The full factorial model first attempts a seed random intercept plus architecture slope.
+A mixed-model attempt is admissible only when the optimizer converges without a Statsmodels
+convergence warning and its fixed-effect estimates, standard errors, and covariance matrix
+are finite and valid. An inadmissible fit falls back first to a seed random-intercept model
+and then, if necessary, to the same 18-column factorial fixed design with seed-clustered
+standard errors. Every attempt and rejection reason is retained in the summary. Latency is
+analyzed on the natural-log scale. Failed experimental cells remain in the denominator and
+are reported as a separate reliability endpoint rather than silently discarded.
+
+The analyzer computes the source CSV's SHA-256 digest before and after reading it, aborts if
+the file changes during analysis, and writes the verified digest into the public summary.
+This binds the aggregate inference to the exact private result artifact without publishing
+the cell-level file.
 
 ## Live external lane
 

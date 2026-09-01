@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite the software and the statistical report."
 title: "Encrypted Protocol Topology Recovery"
 type: software
-version: 1.0.0
-date-released: 2026-08-30
+version: 1.0.2
+date-released: 2026-09-01
 authors:
   - family-names: Morelli
     given-names: Salem
