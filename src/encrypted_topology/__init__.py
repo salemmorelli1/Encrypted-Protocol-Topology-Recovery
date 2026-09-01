@@ -1,14 +1,13 @@
-"""Encrypted Protocol Topology Recovery research package."""
+"""Simulation-only Encrypted Protocol Topology Recovery research package."""
 
-from .events import EventBatch, MetadataEvent
+from .events import EventBatch
 from .hawkes import exponential_hawkes_log_likelihood
 from .model import HawkesFlowDSBM
 
 __all__ = [
     "EventBatch",
     "HawkesFlowDSBM",
-    "MetadataEvent",
     "exponential_hawkes_log_likelihood",
 ]
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"

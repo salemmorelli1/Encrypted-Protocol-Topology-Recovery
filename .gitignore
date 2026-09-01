@@ -9,17 +9,19 @@ output/
 tmp/
 *.egg-info/
 
-# Packet-derived material and local pseudonym key never enter Git.
-data/private/
-data/captures/
+# Generated experiment tables remain local unless deliberately released.
 data/results/
+
+# Defense in depth: external network artifacts are outside this project's scope.
 *.pcap
 *.pcapng
 *.cap
 *.key
 *.salt
 
-# Local capture configuration.
+# Local configuration and credentials.
 .env
 .env.local
 credentials*.json
+data/captures/
+data/private/

@@ -1,26 +1,10 @@
-"""Typed packet-metadata events and tensor conversion utilities."""
+"""Typed synthetic event tensors used by the simulation laboratory."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 import torch
-
-
-@dataclass(frozen=True)
-class MetadataEvent:
-    """The only packet fields admitted to persistent research storage."""
-
-    timestamp: float
-    packet_size: int
-    src_hash: str
-    dst_hash: str
-    network_family: str
-    transport_family: str
-
-    def to_dict(self) -> dict[str, object]:
-        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -76,20 +60,3 @@ class EventBatch:
         return EventBatch(
             self.times[:stop], self.sizes[:stop], self.src[:stop], self.dst[:stop], self.node_keys
         )
-
-
-def events_to_batch(events: Iterable[MetadataEvent]) -> EventBatch:
-    """Map stable pseudonyms to local contiguous indices and origin-relative time."""
-
-    ordered = sorted(events, key=lambda event: event.timestamp)
-    if len(ordered) < 2:
-        raise ValueError("at least two metadata events are required")
-    node_keys = tuple(sorted({e.src_hash for e in ordered} | {e.dst_hash for e in ordered}))
-    index = {key: i for i, key in enumerate(node_keys)}
-    origin = ordered[0].timestamp
-    times = torch.tensor([e.timestamp - origin for e in ordered], dtype=torch.float64)
-    sizes = torch.tensor([e.packet_size for e in ordered], dtype=torch.float32)
-    src = torch.tensor([index[e.src_hash] for e in ordered], dtype=torch.long)
-    dst = torch.tensor([index[e.dst_hash] for e in ordered], dtype=torch.long)
-    keep = src != dst
-    return EventBatch(times[keep], sizes[keep], src[keep], dst[keep], node_keys)

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "encrypted-topology-recovery"
-version = "1.0.2"
-description = "Privacy-minimized Hawkes-flow DSBM inference for authorized packet-metadata streams"
+version = "1.1.0"
+description = "Simulation-only Hawkes-flow DSBM laboratory for controlled topology recovery"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -18,7 +18,6 @@ dependencies = [
   "statsmodels>=0.14,<1",
   "networkx>=3.2,<4",
   "torch>=2.2,<3",
-  "scapy>=2.5,<3",
 ]
 
 [project.optional-dependencies]

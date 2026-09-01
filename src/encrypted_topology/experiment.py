@@ -1,4 +1,4 @@
-"""Restartable 2 x 3 x 3 controlled-truth factorial experiment."""
+"""Restartable controlled-truth factorial and robustness experiments."""
 
 from __future__ import annotations
 
@@ -22,7 +22,13 @@ from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from .baseline import fit_static_baseline
 from .diagnostics import binary_log_score, importance_ess
 from .model import HawkesFlowDSBM
-from .simulator import OBFUSCATION_LEVELS, SPARSITY_LEVELS, simulate_network
+from .simulator import (
+    GENERATOR_FAMILIES,
+    OBFUSCATION_LEVELS,
+    SPARSITY_LEVELS,
+    simulate_network,
+    simulation_registry,
+)
 
 ARCHITECTURES = ("hawkes_flow_dsbm", "static_gae_louvain")
 BASE_SEED = 2026
@@ -39,6 +45,7 @@ FIELDS = (
     "importance_ess_fraction",
     "status",
 )
+ROBUSTNESS_FIELDS = ("generator",) + FIELDS
 
 
 @dataclass(frozen=True)
@@ -77,8 +84,11 @@ def run_cell(
     sparsity: str,
     epochs: int = 60,
     device: str | torch.device = "cpu",
+    generator: str = "hawkes_exponential",
 ) -> CellResult:
-    simulated = simulate_network(seed, sparsity=sparsity, obfuscation=obfuscation)
+    simulated = simulate_network(
+        seed, sparsity=sparsity, obfuscation=obfuscation, generator=generator
+    )
     batch = simulated.batch.to(device)
     labels = _off_diagonal(simulated.truth_adjacency.to(device))
     if np.unique(labels).size != 2:
@@ -127,11 +137,15 @@ def _read_completed(path: Path) -> dict[tuple[int, str, str, str], dict[str, str
     }
 
 
-def _write_rows(path: Path, rows: list[dict[str, object]]) -> None:
+def _write_rows(
+    path: Path,
+    rows: list[dict[str, object]],
+    fieldnames: tuple[str, ...] = FIELDS,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp")
     with temporary.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=FIELDS)
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
     temporary.replace(path)
@@ -168,6 +182,86 @@ def run_factorial(
             int(value["seed"]), str(value["obfuscation"]), str(value["sparsity"]), str(value["architecture"])
         ))
         _write_rows(output, rows)
+    return len(rows)
+
+
+def _read_robustness_completed(
+    path: Path,
+) -> dict[tuple[int, str, str, str, str], dict[str, str]]:
+    if not path.exists():
+        return {}
+    with path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        if tuple(reader.fieldnames or ()) != ROBUSTNESS_FIELDS:
+            raise RuntimeError("robustness results schema does not match the v1 registry")
+        rows = list(reader)
+    return {
+        (
+            int(row["seed"]),
+            row["generator"],
+            row["architecture"],
+            row["obfuscation"],
+            row["sparsity"],
+        ): row
+        for row in rows
+    }
+
+
+def run_robustness(
+    output: Path = Path("data/results/robustness_results.csv"),
+    seeds: int = 30,
+    epochs: int = 60,
+    device: str | torch.device | None = None,
+    generators: tuple[str, ...] = GENERATOR_FAMILIES,
+) -> int:
+    """Run a restartable cross-generator misspecification and null experiment."""
+
+    if seeds < 1:
+        raise ValueError("seeds must be positive")
+    unknown = set(generators) - set(GENERATOR_FAMILIES)
+    if unknown:
+        raise ValueError(f"unknown generator families: {sorted(unknown)}")
+    if len(set(generators)) != len(generators):
+        raise ValueError("generator families must be unique")
+    selected_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    completed = _read_robustness_completed(output)
+    rows: list[dict[str, object]] = list(completed.values())
+    design = [
+        (seed, generator, architecture, obfuscation, sparsity)
+        for seed in range(BASE_SEED, BASE_SEED + seeds)
+        for generator in generators
+        for obfuscation in OBFUSCATION_LEVELS
+        for sparsity in SPARSITY_LEVELS
+        for architecture in ARCHITECTURES
+    ]
+    rng = np.random.default_rng(1100)
+    rng.shuffle(design)
+    for seed, generator, architecture, obfuscation, sparsity in design:
+        key = (seed, generator, architecture, obfuscation, sparsity)
+        if key in completed:
+            continue
+        result = run_cell(
+            seed,
+            architecture,
+            obfuscation,
+            sparsity,
+            epochs=epochs,
+            device=selected_device,
+            generator=generator,
+        )
+        row = {"generator": generator} | asdict(result)
+        rows.append(row)
+        completed[key] = {field: str(value) for field, value in row.items()}
+        rows.sort(
+            key=lambda value: (
+                int(value["seed"]),
+                str(value["generator"]),
+                str(value["obfuscation"]),
+                str(value["sparsity"]),
+                str(value["architecture"]),
+            )
+        )
+        _write_rows(output, rows, ROBUSTNESS_FIELDS)
     return len(rows)
 
 
@@ -534,8 +628,139 @@ def analyze_factorial(
         "contrasts": contrasts,
         "mixed_effects_models": [_fit_mixed_model(rows, endpoint) for endpoint in endpoints],
         "claim_boundary": (
-            "Controlled-truth topology recovery and authorized local metadata feasibility only; "
-            "not attribution, payload recovery, C2 identification, or operational SIGINT validation."
+            "Controlled-truth simulation only; not evidence about real communications, identity, "
+            "intent, attribution, content recovery, or operational SIGINT performance."
+        ),
+    }
+    public_summary.parent.mkdir(parents=True, exist_ok=True)
+    public_summary.write_text(
+        json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+    )
+    return summary
+
+
+def analyze_robustness(
+    results_path: Path = Path("data/results/robustness_results.csv"),
+    public_summary: Path = Path("data/robustness_summary.json"),
+    expected_seeds: int = 30,
+    generators: tuple[str, ...] = GENERATOR_FAMILIES,
+) -> dict[str, object]:
+    """Analyze paired model differences across generator families without mutating results."""
+
+    if expected_seeds < 1:
+        raise ValueError("expected_seeds must be positive")
+    if not generators or len(set(generators)) != len(generators):
+        raise ValueError("generator families must be a nonempty unique sequence")
+    unknown = set(generators) - set(GENERATOR_FAMILIES)
+    if unknown:
+        raise ValueError(f"unknown generator families: {sorted(unknown)}")
+
+    results_sha256_before = _sha256_file(results_path)
+    with results_path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        if tuple(reader.fieldnames or ()) != ROBUSTNESS_FIELDS:
+            raise RuntimeError("robustness results schema does not match the v1 registry")
+        rows = list(reader)
+    results_sha256_after = _sha256_file(results_path)
+    if results_sha256_before != results_sha256_after:
+        raise RuntimeError("results file changed while analysis was reading it")
+
+    expected_keys = {
+        (str(seed), generator, architecture, obfuscation, sparsity)
+        for seed in range(BASE_SEED, BASE_SEED + expected_seeds)
+        for generator in generators
+        for architecture in ARCHITECTURES
+        for obfuscation in OBFUSCATION_LEVELS
+        for sparsity in SPARSITY_LEVELS
+    }
+    observed_keys = {
+        (
+            row["seed"],
+            row["generator"],
+            row["architecture"],
+            row["obfuscation"],
+            row["sparsity"],
+        )
+        for row in rows
+    }
+    if (
+        len(rows) != len(expected_keys)
+        or observed_keys != expected_keys
+        or any(row["status"] != "complete" for row in rows)
+    ):
+        raise RuntimeError(
+            f"analysis remains locked: expected {len(expected_keys)} exact completed cells"
+        )
+
+    endpoints = ("link_auc", "link_log_score", "latency_ms_per_event")
+    contrasts: list[dict[str, object]] = []
+    for generator in generators:
+        for obfuscation in OBFUSCATION_LEVELS:
+            for sparsity in SPARSITY_LEVELS:
+                selected = [
+                    row
+                    for row in rows
+                    if row["generator"] == generator
+                    and row["obfuscation"] == obfuscation
+                    and row["sparsity"] == sparsity
+                ]
+                by_seed: dict[int, dict[str, dict[str, str]]] = {}
+                for row in selected:
+                    by_seed.setdefault(int(row["seed"]), {})[row["architecture"]] = row
+                for endpoint in endpoints:
+                    differences = np.asarray(
+                        [
+                            float(pair["hawkes_flow_dsbm"][endpoint])
+                            - float(pair["static_gae_louvain"][endpoint])
+                            for pair in by_seed.values()
+                        ]
+                    )
+                    contrasts.append(
+                        {
+                            "generator": generator,
+                            "endpoint": endpoint,
+                            "obfuscation": obfuscation,
+                            "sparsity": sparsity,
+                        }
+                        | _paired_inference(differences)
+                    )
+
+    for endpoint in endpoints:
+        family = [contrast for contrast in contrasts if contrast["endpoint"] == endpoint]
+        adjusted = _holm_adjust(
+            [float(contrast["p_value_two_sided"]) for contrast in family]
+        )
+        for contrast, adjusted_p in zip(family, adjusted, strict=True):
+            contrast["p_value_holm"] = adjusted_p
+            contrast["reject_holm_0_05"] = adjusted_p <= 0.05
+
+    approved_registry = {
+        record["name"]: record
+        for record in simulation_registry()
+        if record["name"] in generators
+    }
+    summary = {
+        "schema": "encrypted-topology-robustness-summary-v1",
+        "status": "complete_simulation_robustness_experiment",
+        "rows": len(rows),
+        "seeds": expected_seeds,
+        "generators": list(generators),
+        "simulation_registry": [approved_registry[name] for name in generators],
+        "results_sha256": results_sha256_before,
+        "results_hash_algorithm": "sha256",
+        "paired_inference": {
+            "method": "paired_seed_t",
+            "confidence_intervals": "condition-specific unadjusted 95% intervals",
+            "multiplicity": (
+                "Holm adjustment within each endpoint across all generator-by-condition contrasts"
+            ),
+            "familywise_alpha": 0.05,
+        },
+        "contrasts": contrasts,
+        "claim_boundary": (
+            "Synthetic robustness and negative-control evidence only; not evidence about real "
+            "communications, identity, intent, attribution, content recovery, or operational "
+            "SIGINT performance."
         ),
     }
     public_summary.parent.mkdir(parents=True, exist_ok=True)

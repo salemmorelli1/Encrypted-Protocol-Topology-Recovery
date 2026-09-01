@@ -1,25 +1,30 @@
 # Claim Boundary
 
-## Supported by the repository as shipped
+## Supported by the repository
 
-- The exact exponential Hawkes event term and compensator are implemented and tested.
+- The exponential Hawkes event term and compensator are implemented and tested.
 - The MAF transform is invertible to numerical tolerance and contributes its log Jacobian.
-- Capture is authorization-gated, interface-specific, non-promiscuous in Scapy, and payload-free.
-- Endpoint identifiers are replaced by keyed HMAC pseudonyms before persistence.
 - The controlled-truth `2 × 3 × 3 × 100` experiment is fully specified and restartable.
+- The completed factorial source is bound to SHA-256
+  `d19433ff32f2222655f5408810b9ed6fd59fa01ea461e05e3f1aa5a59977309a`.
+- Analyzer v1.0.2 reports 27 paired contrasts, endpoint-wise Holm correction, and a recorded
+  mixed-model-to-clustered-OLS fallback hierarchy without changing cell results.
+- Five registered simulation families support matched, misspecified, and no-signal studies.
 
-## Supported only after execution
+## Supported after the separate robustness study completes
 
-- Numerical architecture contrasts for link AUC, link log score, or latency.
-- Robustness trends across padding, jitter, and sparsity.
-- Empirical confidence intervals or mixed-effects coefficients.
+- Architecture contrasts within each declared generator, perturbation, and sparsity cell.
+- Sensitivity of link metrics and latency to specific simulated forms of misspecification.
+- Calibration behavior under the declared independent no-signal negative control.
 
 ## Not supported by this design
 
-- Decryption, content inspection, human identity, intent, or command attribution.
-- Operational cyber-SIGINT validation.
-- Live-network link AUC without an independently blinded truth graph.
-- Generalization beyond observed authorized interfaces and the controlled simulator.
-- Treating importance ESS as MCMC ESS, or reporting rank-normalized R-hat for VI iterates.
+- Claims about real network traffic, devices, people, groups, or organizations.
+- Decryption, payload or message recovery, human identity, intent, or attribution.
+- Command-and-control identification or attribution.
+- Operational, field, intelligence, or SIGINT performance.
+- Generalization to event laws or perturbations absent from the registry.
+- Treating importance ESS as MCMC ESS or reporting rank-normalized R-hat for VI iterates.
 
-The scientifically defensible description is **privacy-minimized latent topology recovery from authorized metadata**, with controlled-truth simulation and a separate unlabelled live-feasibility lane.
+The defensible description is **simulation-only latent-topology recovery under controlled
+truth and declared stochastic event laws**.

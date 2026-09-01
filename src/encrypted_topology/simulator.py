@@ -1,4 +1,4 @@
-"""Controlled-truth multivariate Hawkes network simulator."""
+"""Controlled-truth simulation registry for topology-recovery research."""
 
 from __future__ import annotations
 
@@ -11,6 +11,78 @@ from .events import EventBatch
 
 SPARSITY_LEVELS = ("dense", "moderate", "sparse")
 OBFUSCATION_LEVELS = ("none", "padding", "jitter")
+GENERATOR_FAMILIES = (
+    "hawkes_exponential",
+    "hawkes_mixture",
+    "cox_piecewise",
+    "renewal_gamma",
+    "independent_null",
+)
+
+
+@dataclass(frozen=True)
+class SimulationFamily:
+    """Documented event law used by the robustness experiment."""
+
+    name: str
+    temporal_process: str
+    truth_signal: bool
+    fitted_model_alignment: str
+    description: str
+
+
+SIMULATION_REGISTRY = (
+    SimulationFamily(
+        "hawkes_exponential",
+        "stationary multivariate exponential-kernel Hawkes process",
+        True,
+        "matched",
+        "Primary controlled-truth generator retained for the frozen factorial experiment.",
+    ),
+    SimulationFamily(
+        "hawkes_mixture",
+        "stationary multivariate two-scale Hawkes cluster process",
+        True,
+        "kernel misspecification",
+        "Tests robustness when excitation contains both short and long time scales.",
+    ),
+    SimulationFamily(
+        "cox_piecewise",
+        "piecewise-constant Cox process with shared latent rate shocks",
+        True,
+        "nonstationary misspecification",
+        "Separates topology-linked rates from exogenous temporal nonstationarity.",
+    ),
+    SimulationFamily(
+        "renewal_gamma",
+        "independent gamma-renewal process for each directed block pair",
+        True,
+        "dependence misspecification",
+        "Tests whether non-Poisson renewal timing is mistaken for network excitation.",
+    ),
+    SimulationFamily(
+        "independent_null",
+        "independent homogeneous Poisson marks unrelated to the truth graph",
+        False,
+        "negative control",
+        "Checks calibration when the observations contain no recoverable topology signal.",
+    ),
+)
+
+
+def simulation_registry() -> list[dict[str, object]]:
+    """Return JSON-serializable metadata for every approved synthetic generator."""
+
+    return [
+        {
+            "name": family.name,
+            "temporal_process": family.temporal_process,
+            "truth_signal": family.truth_signal,
+            "fitted_model_alignment": family.fitted_model_alignment,
+            "description": family.description,
+        }
+        for family in SIMULATION_REGISTRY
+    ]
 
 
 @dataclass(frozen=True)
@@ -69,6 +141,100 @@ def _hawkes_cluster_times(
     return sorted(events[:max_events])
 
 
+def _hawkes_mixture_times(
+    rng: np.random.Generator,
+    baseline: np.ndarray,
+    excitation: np.ndarray,
+    horizon: float,
+    max_events: int,
+) -> list[tuple[float, int]]:
+    """Simulate a two-scale cluster law outside the fitted single-kernel family."""
+
+    events: list[tuple[float, int]] = []
+    for mark, rate in enumerate(baseline):
+        count = rng.poisson(rate * horizon)
+        events.extend((float(value), mark) for value in rng.uniform(0.0, horizon, count))
+    cursor = 0
+    while cursor < len(events) and len(events) < max_events:
+        parent_time, parent_mark = events[cursor]
+        remaining = horizon - parent_time
+        for target_mark, mass in enumerate(excitation[parent_mark]):
+            child_count = rng.poisson(mass)
+            if child_count:
+                long_scale = rng.random(child_count) < 0.30
+                rates = np.where(long_scale, 0.45, 2.4)
+                delays = rng.exponential(1.0 / rates)
+                events.extend(
+                    (float(parent_time + delay), target_mark)
+                    for delay in delays
+                    if delay < remaining
+                )
+        cursor += 1
+    return sorted(events[:max_events])
+
+
+def _cox_piecewise_times(
+    rng: np.random.Generator,
+    baseline: np.ndarray,
+    horizon: float,
+    max_events: int,
+) -> list[tuple[float, int]]:
+    """Simulate shared nonstationarity using piecewise-constant latent rates."""
+
+    events: list[tuple[float, int]] = []
+    boundaries = np.linspace(0.0, horizon, 7)
+    multipliers = rng.lognormal(mean=-0.18, sigma=0.60, size=6)
+    for start, stop, multiplier in zip(boundaries[:-1], boundaries[1:], multipliers, strict=True):
+        width = stop - start
+        for mark, rate in enumerate(baseline):
+            count = rng.poisson(rate * multiplier * width)
+            events.extend((float(value), mark) for value in rng.uniform(start, stop, count))
+    return sorted(events[:max_events])
+
+
+def _renewal_gamma_times(
+    rng: np.random.Generator,
+    baseline: np.ndarray,
+    horizon: float,
+    max_events: int,
+) -> list[tuple[float, int]]:
+    """Simulate over-dispersed renewal timing without self-excitation."""
+
+    events: list[tuple[float, int]] = []
+    shape = 0.65
+    for mark, rate in enumerate(baseline):
+        current = float(rng.uniform(0.0, min(horizon, 1.0 / max(rate, 1e-6))))
+        scale = 1.0 / (shape * rate)
+        while current < horizon and len(events) < max_events:
+            events.append((current, mark))
+            current += float(rng.gamma(shape, scale))
+    return sorted(events[:max_events])
+
+
+def _generate_times(
+    generator: str,
+    rng: np.random.Generator,
+    baseline: np.ndarray,
+    excitation: np.ndarray,
+    horizon: float,
+    max_events: int,
+) -> list[tuple[float, int]]:
+    if generator == "hawkes_exponential":
+        return _hawkes_cluster_times(rng, baseline, excitation, 1.6, horizon, max_events)
+    if generator == "hawkes_mixture":
+        return _hawkes_mixture_times(rng, baseline, excitation, horizon, max_events)
+    if generator == "cox_piecewise":
+        return _cox_piecewise_times(rng, baseline, horizon, max_events)
+    if generator == "renewal_gamma":
+        return _renewal_gamma_times(rng, baseline, horizon, max_events)
+    if generator == "independent_null":
+        null_baseline = np.full_like(baseline, 0.35)
+        return _hawkes_cluster_times(
+            rng, null_baseline, np.zeros_like(excitation), 1.6, horizon, max_events
+        )
+    raise ValueError(f"unknown generator family: {generator}")
+
+
 def simulate_network(
     seed: int,
     sparsity: str = "moderate",
@@ -77,11 +243,14 @@ def simulate_network(
     blocks: int = 4,
     horizon: float = 30.0,
     max_events: int = 700,
+    generator: str = "hawkes_exponential",
 ) -> SimulatedNetwork:
-    """Generate truth-labelled node links and packet metadata under one DOE cell."""
+    """Generate truth-labelled node links and synthetic marked events under one DOE cell."""
 
     if obfuscation not in OBFUSCATION_LEVELS:
         raise ValueError(f"unknown obfuscation level: {obfuscation}")
+    if generator not in GENERATOR_FAMILIES:
+        raise ValueError(f"unknown generator family: {generator}")
     if blocks < 2:
         raise ValueError("at least two blocks are required for binary link evaluation")
     if nodes < 2 * blocks or nodes % blocks:
@@ -100,7 +269,7 @@ def simulate_network(
             target_row, target_column = divmod(target, blocks)
             if source != target and (source_row == target_row or source_column == target_column):
                 excitation[source, target] = 0.012
-    events = _hawkes_cluster_times(rng, baseline, excitation, 1.6, horizon, max_events)
+    events = _generate_times(generator, rng, baseline, excitation, horizon, max_events)
     if len(events) < 40:
         raise RuntimeError("simulator generated too few events; increase the horizon")
 
@@ -157,6 +326,7 @@ def simulate_network(
             "seed": seed,
             "sparsity": sparsity,
             "obfuscation": obfuscation,
+            "generator": generator,
             "nodes": nodes,
             "blocks": blocks,
             "horizon": horizon,

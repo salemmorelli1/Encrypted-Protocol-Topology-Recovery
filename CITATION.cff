@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite the software and the statistical report."
 title: "Encrypted Protocol Topology Recovery"
 type: software
-version: 1.0.2
+version: 1.1.0
 date-released: 2026-09-01
 authors:
   - family-names: Morelli
@@ -11,6 +11,6 @@ repository-code: "https://github.com/salemmorelli1/Encrypted-Protocol-Topology-R
 url: "https://salemmorelli1.github.io/Encrypted-Protocol-Topology-Recovery/"
 license: MIT
 abstract: >-
-  Privacy-minimized inference of latent communication topology from authorized
-  packet metadata using exact Hawkes likelihoods, dynamic block structure, and
-  masked autoregressive variational flows.
+  Simulation-only inference of latent directed topology under controlled truth
+  using exact Hawkes likelihoods, dynamic block structure, masked autoregressive
+  variational flows, misspecified event laws, and a no-signal negative control.

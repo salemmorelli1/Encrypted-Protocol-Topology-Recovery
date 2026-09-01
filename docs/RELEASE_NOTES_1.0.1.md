@@ -1,5 +1,8 @@
 # Release 1.0.1
 
+> Historical record: the acquisition features described in this release were removed in
+> version 1.1.0. They are not current commands or installation requirements.
+
 This maintenance release repairs the empirical-execution path discovered during the first
 Windows smoke run.
 
