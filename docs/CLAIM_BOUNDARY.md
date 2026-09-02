@@ -10,6 +10,9 @@
 - Analyzer v1.0.2 reports 27 paired contrasts, endpoint-wise Holm correction, and a recorded
   mixed-model-to-clustered-OLS fallback hierarchy without changing cell results.
 - Five registered simulation families support matched, misspecified, and no-signal studies.
+- The isolated cryptography component performs authenticated AES-GCM round trips on generated
+  plaintext with a temporary experiment-owned key and verifies byte-exact reconstruction.
+- A key-withheld software control invokes no decryption and emits no plaintext.
 
 ## Supported after the separate robustness study completes
 
@@ -20,11 +23,14 @@
 ## Not supported by this design
 
 - Claims about real network traffic, devices, people, groups, or organizations.
-- Decryption, payload or message recovery, human identity, intent, or attribution.
+- Breaking encryption, recovering keys, or recovering content without an authorized
+  experiment-owned key.
+- Payload or message claims about any external communication.
+- Human identity, intent, or attribution.
 - Command-and-control identification or attribution.
 - Operational, field, intelligence, or SIGINT performance.
 - Generalization to event laws or perturbations absent from the registry.
 - Treating importance ESS as MCMC ESS or reporting rank-normalized R-hat for VI iterates.
 
-The defensible description is **simulation-only latent-topology recovery under controlled
-truth and declared stochastic event laws**.
+The defensible description is **simulation-only latent-topology recovery plus authorized
+synthetic cryptographic round-trip testing under controlled truth**.

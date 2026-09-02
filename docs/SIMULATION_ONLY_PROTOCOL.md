@@ -2,15 +2,28 @@
 
 ## Runtime boundary
 
-Version 1.1.0 accepts no network interface, packet file, endpoint list, external event stream,
-or address map. The package contains no acquisition backend, packet parser, live inference
-command, or pseudonymization key. All runtime observations are synthetic tensors generated
-in memory from an explicit integer seed.
+Version 1.1.0 accepts no network interface, packet file, external ciphertext, endpoint list,
+external event stream, external key, or address map. The package contains no acquisition
+backend, packet parser, live inference command, key-recovery routine, or pseudonymization
+key. All runtime observations and plaintexts are synthetic objects generated in memory.
 
-The CLI is restricted to six commands: `simulation-registry`, `simulate`, `run-factorial`,
-`analyze`, `run-robustness`, and `analyze-robustness`. Tests lock that command set, assert
-that the former collection modules are not importable, and reject packet-capture libraries
-in runtime dependencies.
+The CLI is restricted to seven commands: `simulation-registry`, `simulate`, `crypto-lab`,
+`run-factorial`, `analyze`, `run-robustness`, and `analyze-robustness`. `crypto-lab` accepts
+only generator design parameters and performs an in-memory, experiment-owned AES-GCM round
+trip. Tests lock that command set, assert that the former collection modules are not
+importable, and reject packet-capture libraries in runtime dependencies.
+
+## Synthetic cryptography boundary
+
+The cryptography component and topology component are separate. AES-GCM receives generated
+plaintext, a temporary experiment key, a unique nonce, associated data, ciphertext, and an
+authentication tag. Topology recovery continues to receive only event times, sizes, source
+and destination indices, and synthetic node labels.
+
+The authorized condition requires byte-exact plaintext reconstruction. The key-withheld
+condition never invokes decryption and must emit zero plaintext outputs. This is a software
+boundary control, not a claim that metadata experimentally proves the security of AES-GCM.
+See `SYNTHETIC_CRYPTOGRAPHY_PROTOCOL.md` for the complete design and interpretation.
 
 ## Generator registry
 
@@ -40,8 +53,9 @@ after the lock passes.
 
 ## Data rule
 
-Do not adapt this repository to ingest real traffic for this study. Suitable extensions are
-new stochastic processes, graph priors, synthetic perturbations, calibration diagnostics,
-simulation-based calibration, posterior-predictive checks, and compute benchmarks. External
-validity questions should be addressed with published aggregate benchmarks or a separately
-governed project, not by adding collection code here.
+Do not adapt this repository to ingest real traffic, external ciphertext, or third-party keys
+for this study. Suitable extensions are new stochastic processes, graph priors, synthetic
+perturbations, controlled cryptographic round trips, calibration diagnostics, simulation-based
+calibration, posterior-predictive checks, and compute benchmarks. External validity questions
+should be addressed with published aggregate benchmarks or a separately governed project,
+not by adding collection, interception, or key-recovery code here.

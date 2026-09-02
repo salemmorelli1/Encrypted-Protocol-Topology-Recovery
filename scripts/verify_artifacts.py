@@ -32,6 +32,9 @@ def main() -> None:
         RESULTS_SHA256,
         "robustness pending",
         "independent_null",
+        "Synthetic cryptography laboratory",
+        "key-withheld",
+        "no key recovery",
     )
     missing = [phrase for phrase in required if phrase.lower() not in html.lower()]
     if missing:
@@ -46,7 +49,12 @@ def main() -> None:
         "version": "1.1.0",
         "data_mode": "simulation_only",
         "external_input_supported": False,
+        "external_ciphertext_supported": False,
         "collection_modules_present": False,
+        "synthetic_crypto_lab_present": True,
+        "authorized_synthetic_decryption_only": True,
+        "key_recovery_supported": False,
+        "key_withheld_control_present": True,
         "controlled_truth_factorial_complete": True,
         "factorial_cells": 1800,
         "factorial_results_sha256": RESULTS_SHA256,

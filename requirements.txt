@@ -5,6 +5,7 @@ scikit-learn>=1.4,<2
 statsmodels>=0.14,<1
 networkx>=3.2,<4
 torch>=2.2,<3
+cryptography>=42,<47
 matplotlib>=3.8,<4
 reportlab>=4,<6
 pypdf>=5,<7

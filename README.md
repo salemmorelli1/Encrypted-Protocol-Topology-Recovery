@@ -12,6 +12,10 @@ Version 1.1.0 has no packet-capture, interface-enumeration, external-trace impor
 pseudonymization, or live-inference path. Every event, node label, graph, mark, and truth
 label used by the runtime is generated in memory from a declared seed.
 
+The synthetic cryptography laboratory is a separate in-memory component. It can decrypt only
+the synthetic messages it encrypts when supplied its temporary experiment-owned AES-GCM key;
+it does not recover keys or accept external ciphertext.
+
 ## Scientific scope
 
 The frozen primary study is a randomized complete-block `2 × 3 × 3 × 100` factorial:
@@ -104,15 +108,42 @@ encrypted-topology analyze-robustness --seeds 30
 Generated result tables remain local by default. Public summaries carry the verified source
 hash, design size, multiplicity rule, and explicit claim boundary.
 
+## Run the synthetic cryptography control
+
+Run an authorized AES-GCM round trip on generated events:
+
+```bash
+encrypted-topology crypto-lab \
+  --generator hawkes_exponential \
+  --seed 2026 \
+  --sparsity moderate \
+  --obfuscation none
+```
+
+The command generates synthetic plaintext, encrypts it with a temporary 256-bit experiment
+key and unique nonces, performs authenticated decryption, and verifies byte-exact recovery.
+A separate key-withheld condition produces no plaintext output. The topology interface remains
+limited to time, size, source, destination, and synthetic node labels; it never receives keys,
+nonces, authentication tags, ciphertext, or plaintext.
+
+This control demonstrates correct authorized decryption, not encryption breaking. It has no
+network, packet-file, external-ciphertext, TLS, Wi-Fi, credential-guessing, or key-recovery
+path. Deliberately weak toy ciphers, if studied later, must remain in a separately reviewed
+artificial-key experiment. See
+[`docs/SYNTHETIC_CRYPTOGRAPHY_PROTOCOL.md`](docs/SYNTHETIC_CRYPTOGRAPHY_PROTOCOL.md).
+
 ## Claim boundary
 
 This code can evaluate statistical recovery of a known synthetic graph under declared event
-laws and perturbations. It cannot establish facts about real communications, recover
-encrypted content, identify people or organizations, infer intent, attribute command and
-control, or demonstrate operational SIGINT performance. The independent-null family is a
-negative control, not a detector of real-world absence or innocence.
+laws and perturbations. Its cryptography control can reconstruct only generated plaintext
+when supplied the experiment-owned key; it cannot break encryption or recover content without
+that key. It cannot establish facts about real communications, identify people or
+organizations, infer intent, attribute command and control, or demonstrate operational SIGINT
+performance. The independent-null family is a negative control, not a detector of real-world
+absence or innocence.
 
 See [`docs/SIMULATION_ONLY_PROTOCOL.md`](docs/SIMULATION_ONLY_PROTOCOL.md),
+[`docs/SYNTHETIC_CRYPTOGRAPHY_PROTOCOL.md`](docs/SYNTHETIC_CRYPTOGRAPHY_PROTOCOL.md),
 [`docs/EXPERIMENT_PROTOCOL.md`](docs/EXPERIMENT_PROTOCOL.md),
 [`docs/STATISTICAL_MODEL.md`](docs/STATISTICAL_MODEL.md), and
 [`docs/CLAIM_BOUNDARY.md`](docs/CLAIM_BOUNDARY.md).
@@ -120,8 +151,8 @@ See [`docs/SIMULATION_ONLY_PROTOCOL.md`](docs/SIMULATION_ONLY_PROTOCOL.md),
 ## Repository map
 
 ```text
-src/encrypted_topology/   simulator, likelihood, flows, models, diagnostics, CLI
-tests/                    mathematical, boundary, robustness, and smoke tests
+src/encrypted_topology/   simulator, cryptography controls, models, diagnostics, CLI
+tests/                    mathematical, cryptography, boundary, robustness, and smoke tests
 data/                     frozen design and machine-readable project status
 docs/                     protocols, model specification, releases, claim boundary
 report/                   exact 27-page statistical report

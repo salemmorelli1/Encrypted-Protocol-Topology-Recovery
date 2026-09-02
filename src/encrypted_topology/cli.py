@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
 
+from .crypto_lab import run_synthetic_crypto_lab
 from .experiment import (
     analyze_factorial,
     analyze_robustness,
@@ -44,6 +46,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--generator", choices=GENERATOR_FAMILIES, default=GENERATOR_FAMILIES[0]
     )
     simulate.add_argument("--epochs", type=int, default=20)
+
+    crypto_lab = subparsers.add_parser(
+        "crypto-lab", help="run an in-memory AES-GCM experiment on synthetic events"
+    )
+    crypto_lab.add_argument("--seed", type=int, default=2026)
+    crypto_lab.add_argument("--sparsity", choices=SPARSITY_LEVELS, default="moderate")
+    crypto_lab.add_argument("--obfuscation", choices=OBFUSCATION_LEVELS, default="none")
+    crypto_lab.add_argument(
+        "--generator", choices=GENERATOR_FAMILIES, default=GENERATOR_FAMILIES[0]
+    )
 
     factorial = subparsers.add_parser(
         "run-factorial", help="resume the frozen matched-generator factorial"
@@ -124,6 +136,23 @@ def main() -> None:
         )
         result = simulated.condition | {
             "inference": _fit_and_summarize(simulated.batch, args.epochs)
+        }
+    elif args.command == "crypto-lab":
+        simulated = simulate_network(
+            args.seed,
+            args.sparsity,
+            args.obfuscation,
+            generator=args.generator,
+        )
+        summary = run_synthetic_crypto_lab(simulated.batch, seed=args.seed)
+        result = simulated.condition | {
+            "synthetic_cryptography": asdict(summary),
+            "all_authorized_round_trips_exact": summary.all_authorized_round_trips_exact,
+            "key_withheld_control_passed": summary.key_withheld_control.passed,
+            "claim_boundary": (
+                "Experiment-owned synthetic plaintext and temporary key only; no key recovery, "
+                "external traffic, TLS, Wi-Fi, identity, intent, or attribution claim."
+            ),
         }
     elif args.command == "run-factorial":
         result = {

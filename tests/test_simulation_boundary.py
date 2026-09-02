@@ -18,6 +18,7 @@ def test_cli_exposes_only_simulation_and_analysis_commands():
     assert set(subparsers.choices) == {
         "simulation-registry",
         "simulate",
+        "crypto-lab",
         "run-factorial",
         "analyze",
         "run-robustness",
