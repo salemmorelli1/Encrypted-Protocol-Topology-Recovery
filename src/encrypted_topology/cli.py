@@ -1,101 +1,137 @@
-"""Command-line entry points for authorized acquisition and controlled experiments."""
+"""Command-line entry points for the simulation-only research laboratory."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import subprocess
-from datetime import UTC, datetime
+from dataclasses import asdict
 from pathlib import Path
 
 import torch
 
-from .capture import CapturePolicy, capture_to_file
-from .experiment import analyze_factorial, run_factorial
-from .io import load_capture
+from .crypto_lab import run_synthetic_crypto_lab
+from .events import EventBatch
+from .experiment import (
+    analyze_factorial,
+    analyze_robustness,
+    run_factorial,
+    run_robustness,
+)
 from .model import HawkesFlowDSBM
-from .simulator import simulate_network
+from .simulator import (
+    GENERATOR_FAMILIES,
+    OBFUSCATION_LEVELS,
+    SPARSITY_LEVELS,
+    simulate_network,
+    simulation_registry,
+)
 
 
-def list_interfaces() -> dict[str, object]:
-    response: dict[str, object] = {"scapy": [], "tshark": []}
-    try:
-        from scapy.all import get_if_list
-
-        response["scapy"] = list(get_if_list())
-    except (ImportError, OSError, RuntimeError) as exc:  # pragma: no cover - platform dependent
-        response["scapy_error"] = str(exc)
-    try:
-        completed = subprocess.run(
-            ["tshark", "-D"], capture_output=True, text=True, check=False, shell=False
-        )
-        response["tshark"] = completed.stdout.splitlines()
-    except OSError as exc:  # pragma: no cover
-        response["tshark_error"] = str(exc)
-    return response
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
 
 
-def _capture_policy(args: argparse.Namespace) -> CapturePolicy:
-    return CapturePolicy(
-        interface=args.interface,
-        duration_seconds=args.duration,
-        packet_limit=args.packet_limit,
-        capture_filter=args.capture_filter,
-        backend=args.backend,
-        authorized_capture=args.authorized_capture,
-    )
-
-
-def _default_capture_path() -> Path:
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return Path("data/captures") / f"metadata-{stamp}.json.gz"
+def _nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be a nonnegative integer")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Encrypted topology recovery under an explicit authorized-capture boundary"
+        description=(
+            "Simulation-only topology-recovery research; no capture or external-data commands"
+        )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("interfaces", help="list locally available Scapy and TShark interfaces")
+    subparsers.add_parser(
+        "simulation-registry", help="describe every synthetic event generator"
+    )
 
-    for command in ("capture", "live"):
-        capture = subparsers.add_parser(command)
-        capture.add_argument("--backend", choices=("scapy", "tshark"), default="scapy")
-        capture.add_argument("--interface", required=True)
-        capture.add_argument("--duration", type=float, default=60.0)
-        capture.add_argument("--packet-limit", type=int, default=10_000)
-        capture.add_argument("--capture-filter", default="ip or ip6")
-        capture.add_argument("--output", type=Path)
-        capture.add_argument("--authorized-capture", action="store_true")
-        if command == "live":
-            capture.add_argument("--epochs", type=int, default=80)
+    simulate = subparsers.add_parser("simulate", help="fit one controlled synthetic sequence")
+    simulate.add_argument("--seed", type=_nonnegative_int, default=2026)
+    simulate.add_argument("--sparsity", choices=SPARSITY_LEVELS, default="moderate")
+    simulate.add_argument("--obfuscation", choices=OBFUSCATION_LEVELS, default="none")
+    simulate.add_argument(
+        "--generator", choices=GENERATOR_FAMILIES, default=GENERATOR_FAMILIES[0]
+    )
+    simulate.add_argument("--epochs", type=_positive_int, default=20)
+    simulate.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
 
-    infer = subparsers.add_parser("infer")
-    infer.add_argument("--input", type=Path, required=True)
-    infer.add_argument("--epochs", type=int, default=80)
+    crypto_lab = subparsers.add_parser(
+        "crypto-lab", help="run an in-memory AES-GCM experiment on synthetic events"
+    )
+    crypto_lab.add_argument("--seed", type=_nonnegative_int, default=2026)
+    crypto_lab.add_argument("--sparsity", choices=SPARSITY_LEVELS, default="moderate")
+    crypto_lab.add_argument("--obfuscation", choices=OBFUSCATION_LEVELS, default="none")
+    crypto_lab.add_argument(
+        "--generator", choices=GENERATOR_FAMILIES, default=GENERATOR_FAMILIES[0]
+    )
 
-    simulate = subparsers.add_parser("simulate")
-    simulate.add_argument("--seed", type=int, default=2026)
-    simulate.add_argument("--sparsity", choices=("dense", "moderate", "sparse"), default="moderate")
-    simulate.add_argument("--obfuscation", choices=("none", "padding", "jitter"), default="none")
-    simulate.add_argument("--epochs", type=int, default=20)
+    factorial = subparsers.add_parser(
+        "run-factorial", help="resume the registered corrected matched-generator factorial"
+    )
+    factorial.add_argument("--seeds", type=_positive_int, default=100)
+    factorial.add_argument("--epochs", type=_positive_int, default=60)
+    factorial.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    factorial.add_argument(
+        "--output", type=Path, default=Path("data/results/factorial_results.csv")
+    )
 
-    factorial = subparsers.add_parser("run-factorial")
-    factorial.add_argument("--seeds", type=int, default=100)
-    factorial.add_argument("--epochs", type=int, default=60)
-    factorial.add_argument("--output", type=Path, default=Path("data/results/factorial_results.csv"))
+    analyze = subparsers.add_parser(
+        "analyze", help="verify and analyze corrected factorial results"
+    )
+    analyze.add_argument(
+        "--results", type=Path, default=Path("data/results/factorial_results.csv")
+    )
+    analyze.add_argument(
+        "--summary", type=Path, default=Path("data/empirical_summary.json")
+    )
+    analyze.add_argument("--seeds", type=_positive_int, default=100)
 
-    analyze = subparsers.add_parser("analyze")
-    analyze.add_argument("--results", type=Path, default=Path("data/results/factorial_results.csv"))
-    analyze.add_argument("--seeds", type=int, default=100)
+    robustness = subparsers.add_parser(
+        "run-robustness", help="resume the generator-misspecification experiment"
+    )
+    robustness.add_argument("--seeds", type=_positive_int, default=30)
+    robustness.add_argument("--epochs", type=_positive_int, default=60)
+    robustness.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    robustness.add_argument(
+        "--output", type=Path, default=Path("data/results/robustness_results.csv")
+    )
+    robustness.add_argument(
+        "--generators", nargs="+", choices=GENERATOR_FAMILIES, default=GENERATOR_FAMILIES
+    )
+
+    analyze_robust = subparsers.add_parser(
+        "analyze-robustness", help="verify and analyze complete robustness results"
+    )
+    analyze_robust.add_argument(
+        "--results", type=Path, default=Path("data/results/robustness_results.csv")
+    )
+    analyze_robust.add_argument(
+        "--summary", type=Path, default=Path("data/robustness_summary.json")
+    )
+    analyze_robust.add_argument("--seeds", type=_positive_int, default=30)
+    analyze_robust.add_argument(
+        "--generators", nargs="+", choices=GENERATOR_FAMILIES, default=GENERATOR_FAMILIES
+    )
     return parser
 
 
-def _fit_and_summarize(batch, epochs: int) -> dict[str, object]:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def _fit_and_summarize(
+    batch: EventBatch, epochs: int, device_name: str, seed: int
+) -> dict[str, object]:
+    if device_name == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is not available")
+    device = torch.device(device_name)
+    torch.manual_seed(seed)
     model = HawkesFlowDSBM().to(device)
-    fit = model.fit_batch(batch.to(device), epochs=epochs)
+    fit = model.fit_batch(batch.to(device), epochs=epochs, seed=seed)
     return {
         "events": batch.num_events,
         "nodes": batch.num_nodes,
@@ -103,38 +139,74 @@ def _fit_and_summarize(batch, epochs: int) -> dict[str, object]:
         "latency_ms": fit.latency_ms,
         "final_elbo_per_event": fit.final_elbo_per_event,
         "occupied_blocks": fit.occupied_blocks,
-        "claim_boundary": "Unlabelled topology posterior; no live link-AUC claim without external truth.",
+        "claim_boundary": (
+            "Controlled synthetic topology posterior only; no inference about real entities, "
+            "intent, content, or attribution."
+        ),
     }
 
 
 def main() -> None:
     args = build_parser().parse_args()
-    if args.command == "interfaces":
-        result = list_interfaces()
-    elif args.command in {"capture", "live"}:
-        destination = args.output or _default_capture_path()
-        body = capture_to_file(_capture_policy(args), destination)
-        result = {
-            "output": str(destination),
-            "events": len(body["events"]),
-            "sha256": body["sha256"],
-            "payload_retained": False,
-        }
-        if args.command == "live":
-            result["inference"] = _fit_and_summarize(load_capture(destination), args.epochs)
-    elif args.command == "infer":
-        result = _fit_and_summarize(load_capture(args.input), args.epochs)
+    if args.command == "simulation-registry":
+        result: object = {"generators": simulation_registry()}
     elif args.command == "simulate":
-        simulated = simulate_network(args.seed, args.sparsity, args.obfuscation)
-        result = simulated.condition | {"inference": _fit_and_summarize(simulated.batch, args.epochs)}
+        simulated = simulate_network(
+            args.seed,
+            args.sparsity,
+            args.obfuscation,
+            generator=args.generator,
+        )
+        result = simulated.condition | {
+            "inference": _fit_and_summarize(
+                simulated.batch, args.epochs, args.device, args.seed
+            )
+        }
+    elif args.command == "crypto-lab":
+        simulated = simulate_network(
+            args.seed,
+            args.sparsity,
+            args.obfuscation,
+            generator=args.generator,
+        )
+        summary = run_synthetic_crypto_lab(simulated.batch, seed=args.seed)
+        result = simulated.condition | {
+            "synthetic_cryptography": asdict(summary),
+            "all_authorized_round_trips_exact": summary.all_authorized_round_trips_exact,
+            "key_withheld_control_passed": summary.key_withheld_control.passed,
+            "claim_boundary": (
+                "Experiment-owned synthetic plaintext and temporary key only; no key recovery, "
+                "external traffic, TLS, Wi-Fi, identity, intent, or attribution claim."
+            ),
+        }
     elif args.command == "run-factorial":
         result = {
-            "rows": run_factorial(args.output, args.seeds, args.epochs),
+            "rows": run_factorial(
+                args.output, args.seeds, args.epochs, device=args.device
+            ),
+            "output": str(args.output),
+        }
+    elif args.command == "analyze":
+        result = analyze_factorial(args.results, args.summary, expected_seeds=args.seeds)
+    elif args.command == "run-robustness":
+        result = {
+            "rows": run_robustness(
+                args.output,
+                args.seeds,
+                args.epochs,
+                device=args.device,
+                generators=tuple(args.generators),
+            ),
             "output": str(args.output),
         }
     else:
-        result = analyze_factorial(args.results, expected_seeds=args.seeds)
-    print(json.dumps(result, indent=2, allow_nan=True))
+        result = analyze_robustness(
+            args.results,
+            args.summary,
+            expected_seeds=args.seeds,
+            generators=tuple(args.generators),
+        )
+    print(json.dumps(result, indent=2, allow_nan=False))
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ def aggregate_node_features(batch: EventBatch) -> torch.Tensor:
     size_sum = size_sum + torch.zeros(n, device=device).scatter_add_(0, batch.dst, log_size)
     degree = out_count + in_count
     mean_log_size = size_sum / torch.clamp_min(degree, 1.0)
-    span = torch.clamp_min(batch.times[-1].float(), 1e-3)
+    span = torch.as_tensor(batch.horizon, device=device, dtype=torch.float32)
     rate = degree / span
     return torch.stack(
         [torch.log1p(out_count), torch.log1p(in_count), mean_log_size / 8.0, torch.log1p(rate)],
@@ -54,8 +54,8 @@ class HawkesFlowDSBM(nn.Module):
         flow_layers: int = 2,
     ) -> None:
         super().__init__()
-        if blocks < 2:
-            raise ValueError("at least two latent blocks are required")
+        if blocks < 2 or latent_dim < 2 or hidden < latent_dim or flow_layers < 1:
+            raise ValueError("invalid model dimensions")
         self.blocks = blocks
         self.latent_dim = latent_dim
         self.encoder = nn.Sequential(
@@ -95,12 +95,8 @@ class HawkesFlowDSBM(nn.Module):
         labels = torch.argmax(assignments, dim=-1)
         marks = labels[batch.src] * self.blocks + labels[batch.dst]
         baseline, excitation, decay = self.hawkes.constrained()
-        gaps = batch.times[1:] - batch.times[:-1]
-        positive_gaps = gaps[gaps > 0]
-        terminal_gap = torch.median(positive_gaps) if positive_gaps.numel() else torch.tensor(1e-3)
-        horizon = batch.times[-1] + torch.clamp_min(terminal_gap, 1e-3)
         log_hawkes = exponential_hawkes_log_likelihood(
-            batch.times, marks, baseline, excitation, decay, horizon
+            batch.times, marks, baseline, excitation, decay, batch.horizon
         )
         observed_log_size = torch.log(batch.sizes.float())
         size_scale = F.softplus(self.log_size_scale[marks]) + torch.finfo(torch.float32).eps
@@ -131,6 +127,12 @@ class HawkesFlowDSBM(nn.Module):
         learning_rate: float = 2e-3,
         seed: int = 2026,
     ) -> FitResult:
+        if isinstance(epochs, bool) or not isinstance(epochs, int) or epochs < 1:
+            raise ValueError("epochs must be a positive integer")
+        if not math.isfinite(learning_rate) or learning_rate <= 0:
+            raise ValueError("learning_rate must be positive and finite")
+        if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+            raise ValueError("seed must be a nonnegative integer")
         torch.manual_seed(seed)
         optimizer = torch.optim.AdamW(self.parameters(), lr=learning_rate, weight_decay=1e-4)
         trace: list[float] = []
@@ -146,6 +148,11 @@ class HawkesFlowDSBM(nn.Module):
             if not torch.isfinite(loss):
                 raise FloatingPointError("non-finite variational objective")
             loss.backward()
+            if any(
+                parameter.grad is not None and not torch.isfinite(parameter.grad).all()
+                for parameter in self.parameters()
+            ):
+                raise FloatingPointError("non-finite variational gradient")
             torch.nn.utils.clip_grad_norm_(self.parameters(), 10.0)
             optimizer.step()
             trace.append(float(loss.detach()))
@@ -161,6 +168,8 @@ class HawkesFlowDSBM(nn.Module):
 
     @torch.no_grad()
     def link_scores(self, batch: EventBatch, samples: int = 8) -> torch.Tensor:
+        if isinstance(samples, bool) or not isinstance(samples, int) or samples < 1:
+            raise ValueError("samples must be a positive integer")
         scores = torch.zeros(batch.num_nodes, batch.num_nodes, device=batch.sizes.device)
         baseline, _, _ = self.hawkes.constrained()
         block_rate = baseline.reshape(self.blocks, self.blocks)
@@ -174,4 +183,3 @@ class HawkesFlowDSBM(nn.Module):
         scores = scores / samples
         scores.fill_diagonal_(0.0)
         return scores
-

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass
 
@@ -23,6 +24,8 @@ def adjacency_from_events(batch: EventBatch) -> torch.Tensor:
 class StaticGraphAutoencoder(nn.Module):
     def __init__(self, feature_dim: int = 4, hidden: int = 32, latent: int = 8) -> None:
         super().__init__()
+        if min(feature_dim, hidden, latent) < 1:
+            raise ValueError("autoencoder dimensions must be positive")
         self.first = nn.Linear(feature_dim, hidden, bias=False)
         self.second = nn.Linear(hidden, latent, bias=False)
 
@@ -50,6 +53,10 @@ class StaticFitResult:
 def fit_static_baseline(
     batch: EventBatch, epochs: int = 80, learning_rate: float = 5e-3, seed: int = 2026
 ) -> StaticFitResult:
+    if isinstance(epochs, bool) or not isinstance(epochs, int) or epochs < 1:
+        raise ValueError("epochs must be a positive integer")
+    if not math.isfinite(learning_rate) or learning_rate <= 0:
+        raise ValueError("learning_rate must be positive and finite")
     torch.manual_seed(seed)
     adjacency = adjacency_from_events(batch)
     target = (adjacency > 0).float()
@@ -70,7 +77,14 @@ def fit_static_baseline(
         prediction = model(features, adjacency)
         weights = torch.where(target > 0, positive_weight, 1.0)
         loss = nn.functional.binary_cross_entropy(prediction[mask], target[mask], weight=weights[mask])
+        if not torch.isfinite(loss):
+            raise FloatingPointError("non-finite static baseline objective")
         loss.backward()
+        if any(
+            parameter.grad is not None and not torch.isfinite(parameter.grad).all()
+            for parameter in model.parameters()
+        ):
+            raise FloatingPointError("non-finite static baseline gradient")
         optimizer.step()
     if features.is_cuda:
         torch.cuda.synchronize(features.device)
@@ -87,4 +101,3 @@ def fit_static_baseline(
     undirected = graph.to_undirected()
     communities = nx.community.louvain_communities(undirected, seed=seed, weight="weight")
     return StaticFitResult(scores, latency, len(communities), float(loss.detach()))
-
