@@ -6,9 +6,11 @@ import csv
 import hashlib
 import json
 import math
+import os
 import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -32,6 +34,7 @@ from .simulator import (
 
 ARCHITECTURES = ("hawkes_flow_dsbm", "static_gae_louvain")
 BASE_SEED = 2026
+ANALYSIS_ENGINE_VERSION = "1.2.0"
 FIELDS = (
     "seed",
     "architecture",
@@ -46,6 +49,8 @@ FIELDS = (
     "status",
 )
 ROBUSTNESS_FIELDS = ("generator",) + FIELDS
+FactorialKey = tuple[int, str, str, str]
+RobustnessKey = tuple[int, str, str, str, str]
 
 
 @dataclass(frozen=True)
@@ -64,11 +69,15 @@ class CellResult:
 
 
 def _off_diagonal(matrix: torch.Tensor) -> np.ndarray:
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("off-diagonal extraction requires a square matrix")
     mask = ~torch.eye(matrix.shape[0], dtype=torch.bool, device=matrix.device)
     return matrix[mask].detach().cpu().numpy()
 
 
 def _dynamic_importance_ess(model: HawkesFlowDSBM, batch, draws: int = 24) -> float:
+    if isinstance(draws, bool) or not isinstance(draws, int) or draws < 1:
+        raise ValueError("draws must be a positive integer")
     weights = []
     with torch.no_grad():
         for _ in range(draws):
@@ -86,6 +95,10 @@ def run_cell(
     device: str | torch.device = "cpu",
     generator: str = "hawkes_exponential",
 ) -> CellResult:
+    if architecture not in ARCHITECTURES:
+        raise ValueError(f"unknown architecture: {architecture}")
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError("seed must be a nonnegative integer")
     simulated = simulate_network(
         seed, sparsity=sparsity, obfuscation=obfuscation, generator=generator
     )
@@ -94,23 +107,24 @@ def run_cell(
     if np.unique(labels).size != 2:
         raise RuntimeError("truth adjacency lacks both link classes")
     if architecture == "hawkes_flow_dsbm":
+        # Seed before construction so parameter initialization is part of the
+        # declared, repeatable cell seed—not only the stochastic fit loop.
+        torch.manual_seed(seed)
         model = HawkesFlowDSBM().to(device)
-        fit = model.fit_batch(batch, epochs=epochs, seed=seed)
+        dynamic_fit = model.fit_batch(batch, epochs=epochs, seed=seed)
         raw_scores = model.link_scores(batch)
         probabilities = torch.sigmoid(
             (raw_scores - torch.median(raw_scores)) / torch.clamp_min(torch.std(raw_scores), 1e-4)
         )
-        latency = fit.latency_ms
-        occupied = fit.occupied_blocks
+        latency = dynamic_fit.latency_ms
+        occupied = dynamic_fit.occupied_blocks
         ess_fraction = _dynamic_importance_ess(model, batch)
     elif architecture == "static_gae_louvain":
-        fit = fit_static_baseline(batch, epochs=epochs, seed=seed)
-        probabilities = fit.scores
-        latency = fit.latency_ms
-        occupied = fit.occupied_communities
+        static_fit = fit_static_baseline(batch, epochs=epochs, seed=seed)
+        probabilities = static_fit.scores
+        latency = static_fit.latency_ms
+        occupied = static_fit.occupied_communities
         ess_fraction = float("nan")
-    else:
-        raise ValueError(f"unknown architecture: {architecture}")
     scores = _off_diagonal(probabilities)
     return CellResult(
         seed=seed,
@@ -126,11 +140,128 @@ def run_cell(
     )
 
 
-def _read_completed(path: Path) -> dict[tuple[int, str, str, str], dict[str, str]]:
+def _positive_count(value: int, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _factorial_design_keys(seeds: int) -> set[FactorialKey]:
+    _positive_count(seeds, "seeds")
+    return {
+        (seed, architecture, obfuscation, sparsity)
+        for seed in range(BASE_SEED, BASE_SEED + seeds)
+        for architecture in ARCHITECTURES
+        for obfuscation in OBFUSCATION_LEVELS
+        for sparsity in SPARSITY_LEVELS
+    }
+
+
+def _validated_generators(generators: tuple[str, ...]) -> tuple[str, ...]:
+    if not generators or len(set(generators)) != len(generators):
+        raise ValueError("generator families must be a nonempty unique sequence")
+    unknown = set(generators) - set(GENERATOR_FAMILIES)
+    if unknown:
+        raise ValueError(f"unknown generator families: {sorted(unknown)}")
+    return generators
+
+
+def _robustness_design_keys(
+    seeds: int, generators: tuple[str, ...]
+) -> set[RobustnessKey]:
+    _positive_count(seeds, "seeds")
+    _validated_generators(generators)
+    return {
+        (seed, generator, architecture, obfuscation, sparsity)
+        for seed in range(BASE_SEED, BASE_SEED + seeds)
+        for generator in generators
+        for architecture in ARCHITECTURES
+        for obfuscation in OBFUSCATION_LEVELS
+        for sparsity in SPARSITY_LEVELS
+    }
+
+
+def _parse_int(value: str, field: str, row_number: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError(f"row {row_number}: {field} must be an integer") from error
+    return parsed
+
+
+def _parse_finite(value: str, field: str, row_number: int) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError(f"row {row_number}: {field} must be numeric") from error
+    if not math.isfinite(parsed):
+        raise RuntimeError(f"row {row_number}: {field} must be finite")
+    return parsed
+
+
+def _validate_result_row(
+    row: dict[str, str], row_number: int, *, robustness: bool
+) -> FactorialKey | RobustnessKey:
+    seed = _parse_int(row["seed"], "seed", row_number)
+    events = _parse_int(row["events"], "events", row_number)
+    occupied = _parse_int(row["occupied_communities"], "occupied_communities", row_number)
+    architecture = row["architecture"]
+    obfuscation = row["obfuscation"]
+    sparsity = row["sparsity"]
+    if architecture not in ARCHITECTURES:
+        raise RuntimeError(f"row {row_number}: unknown architecture")
+    if obfuscation not in OBFUSCATION_LEVELS or sparsity not in SPARSITY_LEVELS:
+        raise RuntimeError(f"row {row_number}: unknown design level")
+    if events < 40 or occupied < 1:
+        raise RuntimeError(f"row {row_number}: invalid event or community count")
+    auc = _parse_finite(row["link_auc"], "link_auc", row_number)
+    log_score = _parse_finite(row["link_log_score"], "link_log_score", row_number)
+    latency = _parse_finite(row["latency_ms_per_event"], "latency_ms_per_event", row_number)
+    if not 0.0 <= auc <= 1.0 or log_score > 0.0 or latency < 0.0:
+        raise RuntimeError(f"row {row_number}: endpoint outside its valid range")
+    ess_text = row["importance_ess_fraction"]
+    if architecture == "hawkes_flow_dsbm":
+        ess = _parse_finite(ess_text, "importance_ess_fraction", row_number)
+        if not 0.0 < ess <= 1.0:
+            raise RuntimeError(f"row {row_number}: importance ESS fraction outside (0, 1]")
+    elif ess_text.strip().lower() != "nan":
+        raise RuntimeError(f"row {row_number}: static ESS must be nan")
+    if row["status"] != "complete":
+        raise RuntimeError(f"row {row_number}: status must be complete")
+    base: FactorialKey = (seed, architecture, obfuscation, sparsity)
+    if not robustness:
+        return base
+    generator = row["generator"]
+    if generator not in GENERATOR_FAMILIES:
+        raise RuntimeError(f"row {row_number}: unknown generator")
+    return (seed, generator, architecture, obfuscation, sparsity)
+
+
+def _read_validated_rows(
+    path: Path, *, fieldnames: tuple[str, ...], robustness: bool
+) -> tuple[list[dict[str, str]], dict[FactorialKey | RobustnessKey, dict[str, str]]]:
+    with path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        if tuple(reader.fieldnames or ()) != fieldnames:
+            raise RuntimeError("results schema does not match the registered field order")
+        rows = []
+        indexed: dict[FactorialKey | RobustnessKey, dict[str, str]] = {}
+        for row_number, raw_row in enumerate(reader, start=2):
+            if None in raw_row or any(raw_row.get(field) is None for field in fieldnames):
+                raise RuntimeError(f"row {row_number}: malformed column count")
+            row = {field: str(raw_row[field]) for field in fieldnames}
+            key = _validate_result_row(row, row_number, robustness=robustness)
+            if key in indexed:
+                raise RuntimeError(f"row {row_number}: duplicate result key {key}")
+            indexed[key] = row
+            rows.append(row)
+    return rows, indexed
+
+
+def _read_completed(path: Path) -> dict[FactorialKey, dict[str, str]]:
     if not path.exists():
         return {}
-    with path.open(newline="", encoding="utf-8") as stream:
-        rows = list(csv.DictReader(stream))
+    rows, _ = _read_validated_rows(path, fieldnames=FIELDS, robustness=False)
     return {
         (int(row["seed"]), row["architecture"], row["obfuscation"], row["sparsity"]): row
         for row in rows
@@ -143,12 +274,25 @@ def _write_rows(
     fieldnames: tuple[str, ...] = FIELDS,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
+    temporary = path.with_name(f".{path.name}.tmp")
     with temporary.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
-    temporary.replace(path)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def _write_json_atomic(path: Path, document: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+        json.dump(document, stream, indent=2, allow_nan=False)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
 
 
 def run_factorial(
@@ -157,11 +301,16 @@ def run_factorial(
     epochs: int = 60,
     device: str | torch.device | None = None,
 ) -> int:
-    if seeds < 1:
-        raise ValueError("seeds must be positive")
-    selected_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    expected_keys = _factorial_design_keys(seeds)
+    _positive_count(epochs, "epochs")
+    selected_device = device or "cpu"
     completed = _read_completed(output)
-    rows: list[dict[str, object]] = list(completed.values())
+    unexpected = set(completed) - expected_keys
+    if unexpected:
+        raise RuntimeError(f"resume file contains out-of-design cells: {sorted(unexpected)[:3]}")
+    rows: list[dict[str, object]] = [
+        {field: value for field, value in row.items()} for row in completed.values()
+    ]
     design = [
         (seed, architecture, obfuscation, sparsity)
         for seed in range(BASE_SEED, BASE_SEED + seeds)
@@ -179,7 +328,10 @@ def run_factorial(
         rows.append(row)
         completed[cell] = {key: str(value) for key, value in row.items()}
         rows.sort(key=lambda value: (
-            int(value["seed"]), str(value["obfuscation"]), str(value["sparsity"]), str(value["architecture"])
+            int(str(value["seed"])),
+            str(value["obfuscation"]),
+            str(value["sparsity"]),
+            str(value["architecture"]),
         ))
         _write_rows(output, rows)
     return len(rows)
@@ -187,14 +339,12 @@ def run_factorial(
 
 def _read_robustness_completed(
     path: Path,
-) -> dict[tuple[int, str, str, str, str], dict[str, str]]:
+) -> dict[RobustnessKey, dict[str, str]]:
     if not path.exists():
         return {}
-    with path.open(newline="", encoding="utf-8") as stream:
-        reader = csv.DictReader(stream)
-        if tuple(reader.fieldnames or ()) != ROBUSTNESS_FIELDS:
-            raise RuntimeError("robustness results schema does not match the v1 registry")
-        rows = list(reader)
+    rows, _ = _read_validated_rows(
+        path, fieldnames=ROBUSTNESS_FIELDS, robustness=True
+    )
     return {
         (
             int(row["seed"]),
@@ -216,16 +366,16 @@ def run_robustness(
 ) -> int:
     """Run a restartable cross-generator misspecification and null experiment."""
 
-    if seeds < 1:
-        raise ValueError("seeds must be positive")
-    unknown = set(generators) - set(GENERATOR_FAMILIES)
-    if unknown:
-        raise ValueError(f"unknown generator families: {sorted(unknown)}")
-    if len(set(generators)) != len(generators):
-        raise ValueError("generator families must be unique")
-    selected_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    expected_keys = _robustness_design_keys(seeds, generators)
+    _positive_count(epochs, "epochs")
+    selected_device = device or "cpu"
     completed = _read_robustness_completed(output)
-    rows: list[dict[str, object]] = list(completed.values())
+    unexpected = set(completed) - expected_keys
+    if unexpected:
+        raise RuntimeError(f"resume file contains out-of-design cells: {sorted(unexpected)[:3]}")
+    rows: list[dict[str, object]] = [
+        {field: value for field, value in row.items()} for row in completed.values()
+    ]
     design = [
         (seed, generator, architecture, obfuscation, sparsity)
         for seed in range(BASE_SEED, BASE_SEED + seeds)
@@ -254,7 +404,7 @@ def run_robustness(
         completed[key] = {field: str(value) for field, value in row.items()}
         rows.sort(
             key=lambda value: (
-                int(value["seed"]),
+                int(str(value["seed"])),
                 str(value["generator"]),
                 str(value["obfuscation"]),
                 str(value["sparsity"]),
@@ -362,7 +512,9 @@ def _paired_inference(differences: np.ndarray) -> dict[str, object]:
     }
 
 
-def _mixed_fit_diagnostics(fit, caught_warnings: list[warnings.WarningMessage]) -> dict[str, object]:
+def _mixed_fit_diagnostics(
+    fit: Any, caught_warnings: list[warnings.WarningMessage]
+) -> dict[str, object]:
     estimates = np.asarray(fit.fe_params, dtype=float)
     standard_errors = np.asarray(fit.bse_fe, dtype=float)
     fixed_covariance = np.asarray(fit.cov_params(), dtype=float)[
@@ -411,7 +563,7 @@ def _fit_mixed_candidate(
     groups: np.ndarray,
     random: np.ndarray,
     random_structure: str,
-):
+) -> tuple[Any, dict[str, object]]:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", ConvergenceWarning)
         fit = MixedLM(response, fixed, groups=groups, exog_re=random).fit(
@@ -423,7 +575,9 @@ def _fit_mixed_candidate(
     return fit, diagnostics
 
 
-def _coefficient_table(fit, names: list[str], reference: str) -> list[dict[str, object]]:
+def _coefficient_table(
+    fit: Any, names: list[str], reference: str
+) -> list[dict[str, object]]:
     estimates = np.asarray(fit.params, dtype=float)[: len(names)]
     standard_errors = np.asarray(fit.bse, dtype=float)[: len(names)]
     coefficients = []
@@ -568,33 +722,40 @@ def analyze_factorial(
     public_summary: Path = Path("data/empirical_summary.json"),
     expected_seeds: int = 100,
 ) -> dict[str, object]:
+    expected_keys = _factorial_design_keys(expected_seeds)
+    if results_path.resolve() == public_summary.resolve():
+        raise ValueError("results and summary paths must be different")
     results_sha256_before = _sha256_file(results_path)
-    with results_path.open(newline="", encoding="utf-8") as stream:
-        rows = list(csv.DictReader(stream))
+    rows, indexed = _read_validated_rows(
+        results_path, fieldnames=FIELDS, robustness=False
+    )
     results_sha256_after = _sha256_file(results_path)
     if results_sha256_before != results_sha256_after:
         raise RuntimeError("results file changed while analysis was reading it")
-    expected = expected_seeds * len(ARCHITECTURES) * len(OBFUSCATION_LEVELS) * len(SPARSITY_LEVELS)
-    keys = {
-        (row["seed"], row["architecture"], row["obfuscation"], row["sparsity"])
+    observed_keys: set[FactorialKey] = {
+        (int(row["seed"]), row["architecture"], row["obfuscation"], row["sparsity"])
         for row in rows
     }
-    if len(rows) != expected or len(keys) != expected or any(row["status"] != "complete" for row in rows):
-        raise RuntimeError(f"analysis remains locked: expected {expected} unique completed cells")
+    if observed_keys != expected_keys or len(indexed) != len(expected_keys):
+        raise RuntimeError(
+            f"analysis remains locked: expected {len(expected_keys)} exact completed cells"
+        )
     endpoints = ("link_auc", "link_log_score", "latency_ms_per_event")
     contrasts: list[dict[str, object]] = []
     for obfuscation in OBFUSCATION_LEVELS:
         for sparsity in SPARSITY_LEVELS:
             selected = [row for row in rows if row["obfuscation"] == obfuscation and row["sparsity"] == sparsity]
-            by_seed = {}
+            by_seed: dict[int, dict[str, dict[str, str]]] = {}
             for row in selected:
                 by_seed.setdefault(int(row["seed"]), {})[row["architecture"]] = row
             for endpoint in endpoints:
-                differences = np.asarray([
-                    float(pair["hawkes_flow_dsbm"][endpoint])
-                    - float(pair["static_gae_louvain"][endpoint])
-                    for pair in by_seed.values()
-                ])
+                differences = np.asarray(
+                    [
+                        float(by_seed[seed]["hawkes_flow_dsbm"][endpoint])
+                        - float(by_seed[seed]["static_gae_louvain"][endpoint])
+                        for seed in sorted(by_seed)
+                    ]
+                )
                 contrasts.append(
                     {
                         "endpoint": endpoint,
@@ -607,13 +768,14 @@ def analyze_factorial(
     for endpoint in endpoints:
         family = [contrast for contrast in contrasts if contrast["endpoint"] == endpoint]
         adjusted = _holm_adjust(
-            [float(contrast["p_value_two_sided"]) for contrast in family]
+            [float(str(contrast["p_value_two_sided"])) for contrast in family]
         )
         for contrast, adjusted_p in zip(family, adjusted, strict=True):
             contrast["p_value_holm"] = adjusted_p
             contrast["reject_holm_0_05"] = adjusted_p <= 0.05
     summary = {
-        "schema": "encrypted-topology-empirical-summary-v2",
+        "schema": "encrypted-topology-empirical-summary-v3",
+        "analysis_engine_version": ANALYSIS_ENGINE_VERSION,
         "status": "complete_controlled_truth_factorial",
         "rows": len(rows),
         "seeds": expected_seeds,
@@ -632,10 +794,7 @@ def analyze_factorial(
             "intent, attribution, content recovery, or operational SIGINT performance."
         ),
     }
-    public_summary.parent.mkdir(parents=True, exist_ok=True)
-    public_summary.write_text(
-        json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-    )
+    _write_json_atomic(public_summary, summary)
     return summary
 
 
@@ -647,35 +806,21 @@ def analyze_robustness(
 ) -> dict[str, object]:
     """Analyze paired model differences across generator families without mutating results."""
 
-    if expected_seeds < 1:
-        raise ValueError("expected_seeds must be positive")
-    if not generators or len(set(generators)) != len(generators):
-        raise ValueError("generator families must be a nonempty unique sequence")
-    unknown = set(generators) - set(GENERATOR_FAMILIES)
-    if unknown:
-        raise ValueError(f"unknown generator families: {sorted(unknown)}")
+    expected_keys = _robustness_design_keys(expected_seeds, generators)
+    if results_path.resolve() == public_summary.resolve():
+        raise ValueError("results and summary paths must be different")
 
     results_sha256_before = _sha256_file(results_path)
-    with results_path.open(newline="", encoding="utf-8") as stream:
-        reader = csv.DictReader(stream)
-        if tuple(reader.fieldnames or ()) != ROBUSTNESS_FIELDS:
-            raise RuntimeError("robustness results schema does not match the v1 registry")
-        rows = list(reader)
+    rows, indexed = _read_validated_rows(
+        results_path, fieldnames=ROBUSTNESS_FIELDS, robustness=True
+    )
     results_sha256_after = _sha256_file(results_path)
     if results_sha256_before != results_sha256_after:
         raise RuntimeError("results file changed while analysis was reading it")
 
-    expected_keys = {
-        (str(seed), generator, architecture, obfuscation, sparsity)
-        for seed in range(BASE_SEED, BASE_SEED + expected_seeds)
-        for generator in generators
-        for architecture in ARCHITECTURES
-        for obfuscation in OBFUSCATION_LEVELS
-        for sparsity in SPARSITY_LEVELS
-    }
-    observed_keys = {
+    observed_keys: set[RobustnessKey] = {
         (
-            row["seed"],
+            int(row["seed"]),
             row["generator"],
             row["architecture"],
             row["obfuscation"],
@@ -684,9 +829,8 @@ def analyze_robustness(
         for row in rows
     }
     if (
-        len(rows) != len(expected_keys)
+        len(indexed) != len(expected_keys)
         or observed_keys != expected_keys
-        or any(row["status"] != "complete" for row in rows)
     ):
         raise RuntimeError(
             f"analysis remains locked: expected {len(expected_keys)} exact completed cells"
@@ -710,9 +854,9 @@ def analyze_robustness(
                 for endpoint in endpoints:
                     differences = np.asarray(
                         [
-                            float(pair["hawkes_flow_dsbm"][endpoint])
-                            - float(pair["static_gae_louvain"][endpoint])
-                            for pair in by_seed.values()
+                            float(by_seed[seed]["hawkes_flow_dsbm"][endpoint])
+                            - float(by_seed[seed]["static_gae_louvain"][endpoint])
+                            for seed in sorted(by_seed)
                         ]
                     )
                     contrasts.append(
@@ -728,7 +872,7 @@ def analyze_robustness(
     for endpoint in endpoints:
         family = [contrast for contrast in contrasts if contrast["endpoint"] == endpoint]
         adjusted = _holm_adjust(
-            [float(contrast["p_value_two_sided"]) for contrast in family]
+            [float(str(contrast["p_value_two_sided"])) for contrast in family]
         )
         for contrast, adjusted_p in zip(family, adjusted, strict=True):
             contrast["p_value_holm"] = adjusted_p
@@ -740,7 +884,8 @@ def analyze_robustness(
         if record["name"] in generators
     }
     summary = {
-        "schema": "encrypted-topology-robustness-summary-v1",
+        "schema": "encrypted-topology-robustness-summary-v2",
+        "analysis_engine_version": ANALYSIS_ENGINE_VERSION,
         "status": "complete_simulation_robustness_experiment",
         "rows": len(rows),
         "seeds": expected_seeds,
@@ -763,8 +908,5 @@ def analyze_robustness(
             "SIGINT performance."
         ),
     }
-    public_summary.parent.mkdir(parents=True, exist_ok=True)
-    public_summary.write_text(
-        json.dumps(summary, indent=2, allow_nan=False) + "\n", encoding="utf-8"
-    )
+    _write_json_atomic(public_summary, summary)
     return summary

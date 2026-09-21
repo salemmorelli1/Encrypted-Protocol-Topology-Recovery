@@ -15,6 +15,8 @@ from encrypted_topology.experiment import (
     _paired_inference,
     analyze_factorial,
     factorial_contrast_matrix,
+    run_cell,
+    run_factorial,
 )
 from encrypted_topology.simulator import OBFUSCATION_LEVELS, SPARSITY_LEVELS
 
@@ -33,9 +35,9 @@ def _factorial_rows(seeds=(2026, 2027)):
                 + (0.02 if architecture == "hawkes_flow_dsbm" else 0.0)
             ),
             "link_log_score": str(
-                0.5
-                + 0.01 * (seed - 2026)
-                - (0.03 if architecture == "hawkes_flow_dsbm" else 0.0)
+                -0.5
+                - 0.01 * (seed - 2026)
+                + (0.03 if architecture == "hawkes_flow_dsbm" else 0.0)
             ),
             "latency_ms_per_event": str(
                 1.0
@@ -179,9 +181,57 @@ def test_analysis_records_sha256_and_holm_inference(tmp_path, monkeypatch):
     summary = analyze_factorial(results_path, summary_path, expected_seeds=2)
     stored = json.loads(summary_path.read_text(encoding="utf-8"))
 
-    assert summary["schema"] == "encrypted-topology-empirical-summary-v2"
+    assert summary["schema"] == "encrypted-topology-empirical-summary-v3"
     assert summary["results_sha256"] == expected_hash
     assert stored["results_sha256"] == expected_hash
     assert len(summary["contrasts"]) == 27
     assert all("p_value_holm" in contrast for contrast in summary["contrasts"])
     assert all("reject_holm_0_05" in contrast for contrast in summary["contrasts"])
+
+
+def test_analysis_rejects_wrong_seed_set_without_overwriting_summary(tmp_path):
+    results_path = tmp_path / "factorial_results.csv"
+    summary_path = tmp_path / "empirical_summary.json"
+    rows = _factorial_rows()
+    for row in rows:
+        if row["seed"] == "2027":
+            row["seed"] = "2028"
+    with results_path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    summary_path.write_text("sentinel\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="exact completed cells"):
+        analyze_factorial(results_path, summary_path, expected_seeds=2)
+    assert summary_path.read_text(encoding="utf-8") == "sentinel\n"
+
+
+def test_factorial_resume_rejects_duplicate_keys(tmp_path):
+    output = tmp_path / "factorial.csv"
+    row = _factorial_rows(seeds=(2026,))[0]
+    with output.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=FIELDS)
+        writer.writeheader()
+        writer.writerows([row, row])
+
+    with pytest.raises(RuntimeError, match="duplicate result key"):
+        run_factorial(output, seeds=1, epochs=1)
+
+
+def test_analysis_refuses_to_overwrite_its_results_source(tmp_path):
+    path = tmp_path / "factorial.csv"
+    path.write_text("placeholder\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="must be different"):
+        analyze_factorial(path, path, expected_seeds=2)
+
+
+def test_dynamic_cell_is_repeatable_from_declared_seed():
+    first = run_cell(2026, "hawkes_flow_dsbm", "jitter", "dense", epochs=1)
+    second = run_cell(2026, "hawkes_flow_dsbm", "jitter", "dense", epochs=1)
+    assert first.link_auc == pytest.approx(second.link_auc, abs=0.0)
+    assert first.link_log_score == pytest.approx(second.link_log_score, abs=0.0)
+    assert first.occupied_communities == second.occupied_communities
+    assert first.importance_ess_fraction == pytest.approx(
+        second.importance_ess_fraction, abs=0.0
+    )

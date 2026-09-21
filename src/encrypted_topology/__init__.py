@@ -13,4 +13,4 @@ __all__ = [
     "run_synthetic_crypto_lab",
 ]
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"

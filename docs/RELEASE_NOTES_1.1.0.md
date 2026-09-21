@@ -1,5 +1,9 @@
 # Release 1.1.0
 
+> Historical note: version 1.2.0 quarantines the numerical evidence described below because
+> the source CSV is absent and the declared cell seed did not cover model initialization.
+> These statements are not current performance claims.
+
 This release makes the project simulation-only and adds a separate misspecification and
 negative-control research design. It preserves the completed 1,800-cell factorial and the
 v1.0.2 analyzer's inferential corrections.

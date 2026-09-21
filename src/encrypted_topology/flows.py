@@ -7,6 +7,8 @@ from torch import nn
 
 
 class MaskedLinear(nn.Linear):
+    mask: torch.Tensor
+
     def __init__(self, in_features: int, out_features: int) -> None:
         super().__init__(in_features, out_features)
         self.register_buffer("mask", torch.ones(out_features, in_features))
@@ -55,6 +57,8 @@ class MaskedAutoregressiveFlow(nn.Module):
     which is the direction required for variational sampling. ``to_base`` is
     parallel and provides an exact round-trip and log-Jacobian check.
     """
+
+    permutations: torch.Tensor
 
     def __init__(self, dimensions: int, hidden: int = 64, layers: int = 2) -> None:
         super().__init__()

@@ -1,5 +1,8 @@
 # Release 1.0.2
 
+> Historical note: version 1.2.0 quarantines the numerical evidence described below because
+> the source CSV is absent and the declared cell seed did not cover model initialization.
+
 This release hardens the analyzer after the completed factorial run exposed mixed-model
 boundary and Hessian warnings. It does not modify or rerun the 1,800 experimental cells.
 
@@ -24,4 +27,3 @@ The convergence warnings were discovered after the formal cells were generated. 
 revision is therefore a post-execution correction to inferential reporting and should be
 identified as such in the manuscript or release history. The frozen simulator seeds,
 architectures, factor levels, endpoint values, and cell-level result file remain unchanged.
-

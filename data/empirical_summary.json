@@ -1,6 +1,16 @@
 {
-  "schema": "encrypted-topology-empirical-summary-v2",
-  "status": "complete_controlled_truth_factorial",
+  "schema": "encrypted-topology-historical-summary-quarantine-v1",
+  "status": "quarantined_not_current_evidence",
+  "current_evidence": false,
+  "historical_values_preserved": true,
+  "historical_original_summary_sha256": "a772fda74881a03c5664c8e822877d1ce52227d669491fc8fa3850ef5869de88",
+  "source_results_present": false,
+  "quarantine_reasons": [
+    "dynamic model parameters were initialized before the declared cell seed was applied",
+    "the source result CSV is absent, so its hash and exact design cannot be independently verified",
+    "the simulator observation-window and finite-window offspring conventions were corrected in version 1.2.0"
+  ],
+  "required_next_step": "rerun all 1800 registered primary cells with version 1.2.0 and analyze the preserved source CSV",
   "rows": 1800,
   "seeds": 100,
   "results_sha256": "d19433ff32f2222655f5408810b9ed6fd59fa01ea461e05e3f1aa5a59977309a",
@@ -1076,5 +1086,5 @@
       ]
     }
   ],
-  "claim_boundary": "Controlled-truth topology recovery and authorized local metadata feasibility only; not attribution, payload recovery, C2 identification, or operational SIGINT validation."
+  "claim_boundary": "Historical aggregate values are retained for traceability but support no current architecture ranking or performance claim. This remains controlled-truth simulation only, not evidence about real communications, identity, intent, attribution, content recovery, or operational SIGINT performance."
 }

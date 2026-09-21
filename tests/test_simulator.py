@@ -5,6 +5,7 @@ from encrypted_topology.simulator import (
     GENERATOR_FAMILIES,
     SPARSITY_LEVELS,
     _block_connectivity,
+    _hawkes_cluster_times,
     simulate_network,
     simulation_registry,
 )
@@ -25,6 +26,8 @@ def test_explicit_default_generator_preserves_frozen_simulator_path():
     assert torch.equal(implicit.batch.sizes, explicit.batch.sizes)
     assert torch.equal(implicit.batch.src, explicit.batch.src)
     assert torch.equal(implicit.batch.dst, explicit.batch.dst)
+    assert implicit.batch.horizon == 30.0
+    assert float(implicit.batch.times[0]) > 0.0
 
 
 def test_every_registered_generator_is_deterministic_and_has_binary_truth():
@@ -63,3 +66,41 @@ def test_all_frozen_seed_connectivity_draws_include_a_missing_block_edge():
             rng.shuffle(memberships)
             connected = _block_connectivity(rng, 4, sparsity)
             assert not np.all(connected[off_diagonal])
+
+
+def test_hawkes_offspring_mass_is_not_window_truncated_twice():
+    class StubRng:
+        def __init__(self):
+            self.poisson_rates = []
+
+        def poisson(self, rate):
+            self.poisson_rates.append(float(rate))
+            return 1
+
+        @staticmethod
+        def uniform(start, stop, count):
+            assert (start, stop, count) == (0.0, 1.0, 1)
+            return np.asarray([0.9])
+
+        @staticmethod
+        def exponential(scale, count):
+            assert count == 1
+            return np.asarray([0.05])
+
+    rng = StubRng()
+    events = _hawkes_cluster_times(
+        rng,
+        baseline=np.asarray([0.1]),
+        excitation=np.asarray([[0.8]]),
+        decay=1.0,
+        horizon=1.0,
+        max_events=2,
+    )
+    assert rng.poisson_rates == [0.1, 0.8]
+    assert events == [(0.9, 0), (0.9500000000000001, 0)]
+
+
+def test_known_sparse_cox_seeds_meet_the_registered_event_contract():
+    for seed in (2035, 2048, 2053):
+        result = simulate_network(seed, "sparse", "none", generator="cox_piecewise")
+        assert result.batch.num_events >= 40

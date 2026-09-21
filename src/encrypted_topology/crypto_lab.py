@@ -18,7 +18,14 @@ from .events import EventBatch
 AES_GCM_KEY_BYTES = 32
 AES_GCM_NONCE_BYTES = 12
 AES_GCM_TAG_BYTES = 16
-TOPOLOGY_FEATURE_NAMES = ("times", "sizes", "src", "dst", "node_keys")
+TOPOLOGY_FEATURE_NAMES = (
+    "times",
+    "sizes",
+    "src",
+    "dst",
+    "node_keys",
+    "observation_horizon",
+)
 PLAINTEXT_MARKER = b"SYNTHETIC|"
 ASSOCIATED_DATA_PREFIX = b"encrypted-topology:synthetic-event:"
 
@@ -36,6 +43,7 @@ class MetadataOnlyView:
     src: tuple[int, ...]
     dst: tuple[int, ...]
     node_keys: tuple[str, ...]
+    observation_horizon: float
 
     @property
     def num_events(self) -> int:
@@ -132,6 +140,7 @@ def metadata_only_view(batch: EventBatch) -> MetadataOnlyView:
         src=tuple(int(value) for value in batch.src.detach().cpu().tolist()),
         dst=tuple(int(value) for value in batch.dst.detach().cpu().tolist()),
         node_keys=batch.node_keys,
+        observation_horizon=batch.horizon,
     )
 
 

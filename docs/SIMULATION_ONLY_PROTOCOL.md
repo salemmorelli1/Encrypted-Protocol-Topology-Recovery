@@ -2,7 +2,7 @@
 
 ## Runtime boundary
 
-Version 1.1.0 accepts no network interface, packet file, external ciphertext, endpoint list,
+Version 1.2.0 accepts no network interface, packet file, external ciphertext, endpoint list,
 external event stream, external key, or address map. The package contains no acquisition
 backend, packet parser, live inference command, key-recovery routine, or pseudonymization
 key. All runtime observations and plaintexts are synthetic objects generated in memory.
@@ -18,7 +18,7 @@ importable, and reject packet-capture libraries in runtime dependencies.
 The cryptography component and topology component are separate. AES-GCM receives generated
 plaintext, a temporary experiment key, a unique nonce, associated data, ciphertext, and an
 authentication tag. Topology recovery continues to receive only event times, sizes, source
-and destination indices, and synthetic node labels.
+and destination indices, synthetic node labels, and the declared observation horizon.
 
 The authorized condition requires byte-exact plaintext reconstruction. The key-withheld
 condition never invokes decryption and must emit zero plaintext outputs. This is a software
@@ -41,15 +41,15 @@ whether topology affects the observation law and how that law relates to the fit
 
 ## Reproducibility
 
-The primary generator remains `hawkes_exponential`; its random-number order and parameter
-defaults are unchanged so the frozen 1,800-cell experiment remains reproducible. The
-robustness experiment is a separate output schema and never appends to or rewrites the
-frozen factorial table.
+The primary generator remains `hawkes_exponential`. Version 1.2.0 corrects finite-window
+offspring sampling, retains the full `[0,T]` observation window, and seeds before model
+construction. These corrections require a fresh 1,800-cell primary run. The historical
+aggregate is quarantined, and the robustness experiment remains a separate output schema.
 
 Each experiment is restartable. Completed cells are keyed by all design coordinates and
-written atomically through a temporary file. An analyzer verifies the source SHA-256 before
-and after reading, requires the exact completed design, and publishes aggregate results only
-after the lock passes.
+written atomically through a temporary file. An analyzer verifies strict schema and numeric
+contracts plus the exact key set, checks source SHA-256 before and after reading, and writes
+aggregate JSON atomically only after every lock passes.
 
 ## Data rule
 

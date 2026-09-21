@@ -23,9 +23,15 @@ excitation operator is scaled below the stability boundary.
 
 The encoder maps node histories to a factorized Gaussian base law. Masked autoregressive
 bijections transform base draws to a non-Gaussian variational law. Relaxed block indicators
-are obtained with Gumbel–Softmax. Directed link probabilities derive from block-pair logits;
-synthetic size marks receive a conditional Gaussian term. The optimized objective is a Monte
-Carlo evidence lower bound with the MAF log-Jacobian included in `log q`.
+are obtained with Gumbel–Softmax. Directed link scores derive from inferred block-specific
+baseline event rates; synthetic size marks receive a conditional Gaussian term. The
+optimized objective is a Monte Carlo evidence lower bound with the MAF log-Jacobian included
+in `log q`.
+
+The simulator and likelihood retain the declared observation interval `[0,T]`, including
+initial event-free exposure. Events tied at one timestamp are not placed in one another's
+strict past. Finite-window offspring are sampled from total branching mass and censored once
+at `T`.
 
 ## Comparator
 

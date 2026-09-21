@@ -28,7 +28,7 @@ def _rows(seeds: int = 2) -> list[dict[str, object]]:
             "sparsity": sparsity,
             "events": 120,
             "link_auc": 0.60 + 0.02 * (architecture == "hawkes_flow_dsbm") + seed / 1e6,
-            "link_log_score": 0.55 - 0.01 * (architecture == "hawkes_flow_dsbm") + seed / 1e6,
+            "link_log_score": -0.55 + 0.01 * (architecture == "hawkes_flow_dsbm") - seed / 1e6,
             "latency_ms_per_event": 1.0 + 0.4 * (architecture == "hawkes_flow_dsbm"),
             "occupied_communities": 4,
             "importance_ess_fraction": (
@@ -60,7 +60,7 @@ def test_robustness_analysis_locks_schema_keys_hash_and_multiplicity(tmp_path):
 
     summary = analyze_robustness(results_path, summary_path, expected_seeds=2)
 
-    assert summary["schema"] == "encrypted-topology-robustness-summary-v1"
+    assert summary["schema"] == "encrypted-topology-robustness-summary-v2"
     assert summary["results_sha256"] == expected_hash
     assert len(summary["contrasts"]) == 135
     assert sum(item["endpoint"] == "link_auc" for item in summary["contrasts"]) == 45
@@ -87,10 +87,12 @@ def test_robustness_runner_is_restartable_and_uses_separate_schema(tmp_path, mon
             sparsity=sparsity,
             events=100,
             link_auc=0.5,
-            link_log_score=0.6,
+            link_log_score=-0.6,
             latency_ms_per_event=1.0,
             occupied_communities=3,
-            importance_ess_fraction=0.5,
+            importance_ess_fraction=(
+                0.5 if architecture == "hawkes_flow_dsbm" else float("nan")
+            ),
         )
 
     monkeypatch.setattr("encrypted_topology.experiment.run_cell", fake_cell)

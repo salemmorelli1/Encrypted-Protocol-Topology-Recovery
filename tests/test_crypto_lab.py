@@ -25,6 +25,7 @@ def _batch() -> EventBatch:
         src=torch.tensor([0, 1, 2, 0]),
         dst=torch.tensor([1, 2, 0, 2]),
         node_keys=("sim-node-0", "sim-node-1", "sim-node-2"),
+        observation_horizon=2.0,
     )
 
 
@@ -82,7 +83,14 @@ def test_metadata_boundary_contains_no_plaintext_ciphertext_or_key_fields():
     view = metadata_only_view(_batch())
     names = {field.name for field in fields(MetadataOnlyView)}
 
-    assert names == {"times", "sizes", "src", "dst", "node_keys"}
+    assert names == {
+        "times",
+        "sizes",
+        "src",
+        "dst",
+        "node_keys",
+        "observation_horizon",
+    }
     assert not names.intersection({"plaintext", "ciphertext", "key", "nonce", "tag"})
     assert view.num_events == 4
 
@@ -102,7 +110,14 @@ def test_end_to_end_lab_summary_contains_no_secret_material():
 
     assert result.all_authorized_round_trips_exact
     assert result.key_withheld_control.passed
-    assert result.topology_feature_names == ("times", "sizes", "src", "dst", "node_keys")
+    assert result.topology_feature_names == (
+        "times",
+        "sizes",
+        "src",
+        "dst",
+        "node_keys",
+        "observation_horizon",
+    )
     assert not result.experiment_key_persisted
     assert not hasattr(result, "key")
     assert not hasattr(result, "plaintexts")

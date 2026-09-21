@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import shutil
 from pathlib import Path
 
@@ -28,7 +29,8 @@ from reportlab.platypus import (
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "output" / "pdf" / "Encrypted_Protocol_Topology_Recovery_APA_Report.pdf"
 REPO_COPY = ROOT / "report" / OUTPUT.name
-FIGURES = ROOT / "report" / "figures"
+FIGURES = ROOT / "output" / "figures"
+REPO_FIGURES = ROOT / "report" / "figures"
 FONT_PATHS = (
     (
         Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"),
@@ -94,9 +96,9 @@ def make_figures() -> dict[str, Path]:
             axes[0].text(column, row, "2 models", ha="center", va="center", fontsize=8)
     axes[0].set_title("18 cells per seed and generator", weight="bold")
     axes[1].bar(
-        ["Primary\ncomplete", "Robustness\nplanned"],
+        ["Corrected\npending", "Robustness\npending"],
         [1800, 2700],
-        color=["#5bd9a3", "#8b6ee8"],
+        color=["#d9dfe4", "#d9dfe4"],
     )
     axes[1].set_ylabel("Architecture runs")
     axes[1].set_title("Separate result schemas", weight="bold")
@@ -149,11 +151,11 @@ def make_figures() -> dict[str, Path]:
     labels = [
         "Likelihood\ntests",
         "Flow and\nmodel tests",
-        "Frozen\nfactorial",
+        "Corrected\nfactorial",
         "Robustness\nsuite",
         "Independent\nreplication",
     ]
-    completed = [True, True, True, False, False]
+    completed = [True, True, False, False, False]
     ax.bar(
         range(5),
         [1] * 5,
@@ -187,9 +189,9 @@ PAGES: list[tuple[str, list[str]]] = [
     (
         "Abstract",
         [
-            "This report documents a simulation-only computational statistics laboratory for recovering latent directed topology under controlled truth. Version 1.1.0 contains no collection, interface-enumeration, external-trace import, address mapping, or live-inference path. Every event, mark, node label, graph, and truth label used by the runtime is generated in memory from a declared integer seed.",
+            "This report documents a simulation-only computational statistics laboratory for recovering latent directed topology under controlled truth. Version 1.2.0 contains no collection, interface-enumeration, external-trace import, address mapping, or live-inference path. Every event, mark, node label, graph, and truth label used by the runtime is generated in memory from a declared integer seed.",
             "The fitted architecture combines an exact exponential-kernel multivariate Hawkes likelihood, an amortized dynamic stochastic block model, and masked autoregressive variational flows. A static graph autoencoder with Louvain clustering provides the comparator. The likelihood includes both event log-intensities and the exact observation-window compensator; the variational density includes the flow Jacobian; and excitation is constrained below a stability boundary.",
-            "The primary 2 × 3 × 3 × 100 randomized complete-block experiment is complete, producing 1,800 architecture runs. Analyzer v1.0.2 binds inference to the source SHA-256, reports 27 seed-paired contrasts, applies Holm correction within endpoint, and records a diagnostic-aware mixed-model fallback. A separate five-generator, 2,700-run default robustness study is specified but not yet reported. All conclusions are limited to synthetic topology recovery.",
+            "A prior 1,800-row summary is retained only as historical, hash-bound material. Audit v1.2.0 found that parameter initialization preceded the declared cell seed, the source CSV was absent, and the simulated observation-window convention required correction. Those values are quarantined and support no current architecture ranking. A corrected 1,800-cell rerun and the separate five-generator, 2,700-cell robustness study are pending.",
             "Keywords: Hawkes process, stochastic block model, normalizing flow, simulation, topology recovery, model misspecification, negative control",
         ],
     ),
@@ -206,7 +208,7 @@ PAGES: list[tuple[str, list[str]]] = [
         [
             "Events live on the product space of continuous time, directed synthetic dyads, and positive synthetic size marks. The counting measure records occurrences on this space, and the predictable intensity is measurable with respect to the left-continuous event history. Node keys are labels such as synthetic-node-003 and have no external correspondence.",
             "The event batch contains aligned tensors for times, sizes, sources, and destinations. Validation requires nondecreasing nonnegative times, positive sizes, in-range node indices, and no self-links. These conditions define an auditable mathematical object independent of any external serialization or collection system.",
-            "A finite observation window begins at the first generated event. The primary generator and its random-number order remain unchanged from the frozen factorial. New event laws are selected through an explicit registry field and write to a separate result schema, preventing a robustness extension from silently redefining the original experiment.",
+            "The finite observation window is the declared interval from zero through the registered horizon; the initial event-free exposure and terminal exposure are retained. New event laws are selected through an explicit registry field and write to a separate result schema, preventing a robustness extension from silently redefining the corrected primary experiment.",
         ],
     ),
     (
@@ -221,7 +223,7 @@ PAGES: list[tuple[str, list[str]]] = [
         "Stability and Partial Identifiability",
         [
             "A stationary linear Hawkes process requires excitation below its critical branching boundary. The software rescales the nonnegative excitation matrix to a spectral-norm ceiling of 0.85. This conservative differentiable constraint keeps the fitted process inside the implemented stability region.",
-            "Baseline and excitation are only partially identifiable in short sequences. A high baseline with weak excitation can resemble a lower baseline with stronger history dependence. Block labels also switch without altering likelihood. Evaluation therefore uses permutation-invariant link probabilities and never attaches semantic meaning to a block number.",
+            "Baseline and excitation are only partially identifiable in short sequences. A high baseline with weak excitation can resemble a lower baseline with stronger history dependence. Block labels also switch without altering likelihood. Evaluation therefore uses permutation-invariant link scores and never attaches semantic meaning to a block number.",
             "The robustness registry makes these limitations testable. A mixture kernel probes time-scale mismatch, a Cox law introduces shared rate changes, a renewal law creates non-Poisson intervals without self-excitation, and a null law removes topology information. Agreement under one generator is not treated as universal identification.",
         ],
     ),
@@ -236,7 +238,7 @@ PAGES: list[tuple[str, list[str]]] = [
     (
         "Dynamic Stochastic Block Structure",
         [
-            "The block model represents each synthetic node by a probability vector over a finite truncation of latent roles. Directed block-pair logits generate asymmetric link probabilities. Relaxed Gumbel-Softmax draws make discrete allocations differentiable during optimization while allowing unused blocks to receive negligible mass.",
+            "The block model represents each synthetic node by a probability vector over a finite truncation of latent roles. Inferred block-specific baseline event rates generate asymmetric link scores. Relaxed Gumbel-Softmax draws make discrete allocations differentiable during optimization while allowing unused blocks to receive negligible mass.",
             "Node features summarize generated outgoing and incoming counts, size moments, and timing rates. An amortized encoder maps these features to variational parameters. The resulting embeddings enter both relaxed block allocation and the directed link decoder.",
             "Blocks are structural abstractions, not identities or categories. Their labels can exchange under posterior symmetry. The defensible object is a posterior over synthetic relational structure and occupied components, evaluated against the simulator's binary adjacency matrix.",
         ],
@@ -268,8 +270,8 @@ PAGES: list[tuple[str, list[str]]] = [
     (
         "Simulation-Only Software Boundary",
         [
-            "The executable interface contains only simulation-registry, simulate, run-factorial, analyze, run-robustness, and analyze-robustness. There is no interface enumeration, acquisition backend, external event-file argument, address transformer, or live-inference command.",
-            "The package exposes EventBatch but no persistent external-event record. Packet-oriented dependencies are absent. Boundary tests assert that the former acquisition, storage, and pseudonymization modules cannot be imported and that the command set contains exactly the six approved operations.",
+            "The executable interface contains only simulation-registry, simulate, crypto-lab, run-factorial, analyze, run-robustness, and analyze-robustness. There is no interface enumeration, acquisition backend, external event-file argument, address transformer, or live-inference command.",
+            "The package exposes EventBatch but no persistent external-event record. Packet-oriented dependencies are absent. Boundary tests assert that the former acquisition, storage, and pseudonymization modules cannot be imported and that the command set contains exactly the seven approved operations.",
             "This boundary is a scientific design choice. It eliminates ambiguous provenance and confines all link-truth statements to known simulation. Suitable extensions include new stochastic generators, priors, perturbations, calibration procedures, posterior-predictive checks, and compute experiments.",
         ],
     ),
@@ -286,7 +288,7 @@ PAGES: list[tuple[str, list[str]]] = [
         [
             "The primary generator draws balanced node memberships and a directed block-connectivity matrix conditional on at least one absent off-diagonal block edge. This condition guarantees both classes for link AUC without editing a degenerate draw after the fact.",
             "Block connectivity controls immigrant rates, while diagonal and row-or-column-related excitation terms create event dependence. A branching construction draws immigrant events and recursive offspring under an exponential delay law. Synthetic node pairs and sizes are then sampled within the event's source and destination blocks.",
-            "Version 1.1.0 retains this generator as the default and preserves its random-number sequence and parameters. Explicit and implicit selection of hawkes_exponential produce identical tensors. This compatibility rule protects the frozen primary factorial from retrospective change.",
+            "Version 1.2.0 retains this generator as the default but corrects finite-window offspring sampling: total branching mass is sampled once and exponential delays are then censored once. Explicit and implicit generator selection remain identical. Because this correction and deterministic pre-construction seeding change the valid evidence path, the registered primary study must be rerun.",
         ],
     ),
     (
@@ -306,25 +308,25 @@ PAGES: list[tuple[str, list[str]]] = [
         ],
     ),
     (
-        "Frozen Primary Factorial",
+        "Registered Corrected Primary Factorial",
         [
             "The primary design crosses two architectures, three perturbations, and three sparsity levels within each of 100 seeds, for 18 cells per seed and 1,800 runs. Each seed is a complete block because it supplies every treatment combination.",
             "Within-block order is deterministically shuffled. Shared seeds produce paired architecture contrasts and reduce between-graph variation. Primary endpoints are link AUC, binary link log score, and compute latency per event. Failures remain part of the design status rather than being silently discarded.",
-            "Figure 3 shows the nine perturbation-by-sparsity conditions and the two distinct experiment sizes. The robustness extension uses its own generator-prefixed schema; it cannot append to the frozen primary table.",
+            "Figure 3 shows the nine perturbation-by-sparsity conditions and the two distinct experiment sizes. The robustness extension uses its own generator-prefixed schema; it cannot append to the corrected primary table.",
         ],
     ),
     (
-        "Completed Primary Evidence",
+        "Historical Primary Evidence — Quarantined",
         [
-            "The primary design is complete. Its source artifact is identified by SHA-256 d19433ff32f2222655f5408810b9ed6fd59fa01ea461e05e3f1aa5a59977309a. Version 1.1.0 does not modify or rerun any of its 1,800 cells.",
-            "Across nine conditions, the Hawkes-flow DSBM minus static link-AUC contrast ranges from -0.1542 to -0.0792, with all nine Holm decisions rejecting at 0.05. Link log-score contrasts range from -0.0200 to +0.0064, with seven of nine Holm decisions rejecting. Latency contrasts range from +11.4148 to +15.2479 milliseconds per event, with all nine rejecting.",
-            "These ranges show that greater model complexity did not yield superior AUC in the matched primary study and incurred higher latency. Sign and scale must be interpreted through the documented endpoint definitions. The result is evidence about this synthetic generator and configuration only, not real systems.",
+            "A historical summary reports 1,800 rows and identifies them with SHA-256 d19433ff32f2222655f5408810b9ed6fd59fa01ea461e05e3f1aa5a59977309a. The underlying CSV is not present in this repository, so the hash and exact design cannot be independently recomputed from the published checkout.",
+            "Audit v1.2.0 reproduced a deterministic-seeding defect: dynamic-model parameters were constructed before the declared cell seed was applied. It also corrected the observation-window convention and finite-window Hawkes offspring simulation. Those changes affect the intended estimand and generated data path.",
+            "Accordingly, all historical numerical contrasts are quarantined. They are retained only for traceability and support no present architecture ranking, performance conclusion, or completed-evidence claim. Corrected primary evidence requires a fresh 1,800-cell source CSV that passes the exact analyzer contract.",
         ],
     ),
     (
-        "Analyzer v1.0.2 Inference",
+        "Analyzer v1.2.0 Inference",
         [
-            "The analyzer computes the result CSV SHA-256 before and after reading and aborts if the file changes. It requires 1,800 unique completed keys before publishing a summary. Every condition-specific architecture contrast is calculated from seed-level paired differences.",
+            "The analyzer computes the result CSV SHA-256 before and after reading and aborts if the file changes. It requires the exact registered seed-by-architecture-by-perturbation-by-sparsity key set, strict field order, valid numeric ranges, and complete status before publishing a summary. Every condition-specific architecture contrast is calculated from sorted seed-level paired differences.",
             "For each endpoint, nine paired two-sided tests receive Holm step-down adjustment controlling familywise error at 0.05. Confidence intervals are condition-specific unadjusted 95% intervals. The summary records raw and adjusted p values, decision flags, standard errors, and paired seed counts.",
             "The factorial model first attempts a seed random intercept plus architecture slope, then a random intercept only. Inadmissible mixed fits fall back to the same fixed design with seed-clustered OLS inference. Convergence warnings, covariance validity, and every rejection reason are retained rather than hidden.",
         ],
@@ -340,9 +342,9 @@ PAGES: list[tuple[str, list[str]]] = [
     (
         "Convergence and Calibration Diagnostics",
         [
-            "Optimization checks include finite objectives, gradient clipping, occupied components, posterior entropy, and importance-weight effective sample fraction. These diagnose numerical behavior but do not prove posterior correctness.",
+            "Optimization checks include finite objectives, finite gradients, gradient clipping, occupied components, and importance-weight effective sample fraction. These diagnose numerical behavior but do not prove posterior correctness.",
             "Generator-specific posterior-predictive checks should compare event counts, interarrival distributions, size quantiles, and synthetic dyad counts. Simulation-based calibration can be added when the full generative prior and posterior targets are aligned. The independent null directly audits spurious link discrimination.",
-            "Static and dynamic failures are counted by condition. Complete-case filtering is prohibited because selective success could bias model comparison. Figure 4 distinguishes completed mathematical and primary evidence from pending robustness and independent replication.",
+            "Static and dynamic failures are counted by condition. Complete-case filtering is prohibited because selective success could bias model comparison. Figure 4 distinguishes completed mathematical checks from pending corrected primary evidence, robustness, and independent replication.",
         ],
     ),
     (
@@ -350,21 +352,21 @@ PAGES: list[tuple[str, list[str]]] = [
         [
             "The confirmatory latency endpoint measures fitting compute and divides by generated event count. Device synchronization is used where applicable. Event generation and result-file operations are excluded because the estimand is architecture compute, not end-to-end system throughput.",
             "Hardware, software versions, device type, thread configuration, and warm-up policy should accompany every latency result. Cross-device comparisons require separate strata or calibration. Acceleration is optional and a CPU result remains valid for its declared environment.",
-            "The completed primary contrasts show a substantial positive Hawkes-flow-minus-static latency difference. The robustness design asks whether this cost changes with event law and perturbation. It does not make a real-time, operational, or streaming-performance claim.",
+            "No current latency contrast is claimed. The corrected primary and robustness designs will ask whether compute cost changes by architecture, event law, and perturbation. They do not make a real-time, operational, or streaming-performance claim.",
         ],
     ),
     (
         "Software Verification and Provenance",
         [
             "The permanent suite spans Hawkes likelihood and stability, flow inversion, model fitting, simulator determinism, factorial inference, generator registry behavior, exact robustness locks, and the simulation-only boundary. Continuous integration installs a CPU PyTorch wheel, lints, tests, rebuilds this report, and verifies publication claims.",
-            "Experiment output is restartable and written atomically. Primary and robustness schemas are distinct. Public summaries bind aggregate inference to exact source hashes. The machine-readable status distinguishes the completed 1,800-cell factorial from the pending 2,700-cell robustness suite.",
+            "Experiment output is restartable and written atomically. Primary and robustness schemas are distinct. Public summaries bind aggregate inference to exact source hashes. The machine-readable status distinguishes quarantined historical metadata from the pending corrected 1,800-cell factorial and pending 2,700-cell robustness suite.",
             "Generated PDF and dashboard artifacts remain in the repository for inspection, while source scripts are authoritative. An exact 27-page check prevents accidental report drift. Passing software verification demonstrates implementation consistency, not new empirical evidence.",
         ],
     ),
     (
         "Threats to Validity",
         [
-            "Internal validity depends on correct truth generation, deterministic allocation, stable dependencies, and complete failure reporting. The primary generator is close to the fitted model, which can favor the dynamic architecture in principle even though the observed AUC contrasts favored the comparator.",
+            "Internal validity depends on correct truth generation, deterministic initialization, stable dependencies, and complete failure reporting. The primary generator is close to the fitted model, which can favor the dynamic architecture in principle. No current architecture ranking is asserted before the corrected rerun.",
             "Construct validity is limited to binary synthetic block connectivity and the implemented event laws. Link AUC and log score quantify recovery of that adjacency, not semantic relationships. Padding and jitter are narrow perturbations and should not be treated as exhaustive degradation mechanisms.",
             "Statistical conclusion validity depends on seed pairing, multiplicity control, admissible covariance inference, and no outcome-driven changes. External validity is intentionally restricted to the registry. Independent replication and additional preregistered generators are needed before broad algorithmic claims.",
         ],
@@ -373,7 +375,7 @@ PAGES: list[tuple[str, list[str]]] = [
         "Discussion and Conclusion",
         [
             "The project now provides a falsifiable simulation laboratory with an exact point-process target, invertible variational density, controlled graph truth, deterministic generator registry, static comparator, provenance-locked inference, and explicit negative control.",
-            "The completed primary study shows that additional temporal and variational complexity did not improve link AUC under the matched design and carried a clear compute cost. That result is scientifically useful: sophistication is not assumed to imply superiority. The pending robustness suite asks whether the architecture ranking changes under declared misspecification.",
+            "The audit shows why reproducibility controls are part of the scientific result: a hash-bound aggregate is insufficient when the source rows are absent and the declared seed does not cover parameter initialization. The corrected primary and robustness studies are pending, so no architecture ranking is currently defensible.",
             "The strongest defensible conclusion remains narrow. This software evaluates synthetic topology recovery under controlled stochastic assumptions. It does not ingest real observations and supports no conclusion about encrypted content, identity, intent, attribution, command and control, or operational SIGINT performance.",
         ],
     ),
@@ -396,11 +398,12 @@ REFERENCES_B = [
 ]
 
 
-def build() -> Path:
+def build(*, publish: bool = False) -> Path:
     figures = make_figures()
     regular_font, bold_font = register_report_fonts()
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    REPO_COPY.parent.mkdir(parents=True, exist_ok=True)
+    if publish:
+        REPO_COPY.parent.mkdir(parents=True, exist_ok=True)
     styles = getSampleStyleSheet()
     body = ParagraphStyle(
         "APA Body",
@@ -474,12 +477,13 @@ def build() -> Path:
         Paragraph("Salem Morelli", heading),
         Paragraph("Independent Computational Statistics Research", heading),
         Spacer(1, 0.55 * inch),
-        Paragraph("Version 1.1.0 · September 1, 2026", heading),
+        Paragraph("Version 1.2.0 · September 21, 2026", heading),
         Spacer(1, 0.55 * inch),
         Paragraph(
-            "Author Note. This report covers controlled synthetic evidence only. The primary "
-            "1,800-run factorial is complete and provenance-bound; the separate robustness "
-            "experiment is pending. No external observations enter the software.",
+            "Author Note. This report covers controlled synthetic methods only. Historical "
+            "1,800-row aggregates are quarantined after a reproducibility audit; both the "
+            "corrected primary rerun and separate robustness experiment are pending. No "
+            "external observations enter the software.",
             no_indent,
         ),
         PageBreak(),
@@ -532,9 +536,9 @@ def build() -> Path:
     table = Table(
         [
             ["Artifact", "Verification"],
-            ["Runtime boundary", "Six simulation and analysis commands only"],
-            ["Primary factorial", "1,800 complete cells; analyzer v1.0.2"],
-            ["Source provenance", hash_cell],
+            ["Runtime boundary", "Seven simulation, crypto-lab, and analysis commands only"],
+            ["Corrected factorial", "1,800 registered cells pending; analyzer v1.2.0"],
+            ["Historical hash", hash_cell],
             ["Robustness suite", "Five generators; 2,700 default cells pending"],
             ["Report", "Generated from source; exactly 27 pages"],
         ],
@@ -561,9 +565,19 @@ def build() -> Path:
     pages = len(PdfReader(str(OUTPUT)).pages)
     if pages != 27:
         raise RuntimeError(f"report must contain exactly 27 pages, found {pages}")
-    shutil.copy2(OUTPUT, REPO_COPY)
+    if publish:
+        shutil.copy2(OUTPUT, REPO_COPY)
+        REPO_FIGURES.mkdir(parents=True, exist_ok=True)
+        for figure in figures.values():
+            shutil.copy2(figure, REPO_FIGURES / figure.name)
     return OUTPUT
 
 
 if __name__ == "__main__":
-    print(build())
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="copy the verified PDF and figures into tracked publication paths",
+    )
+    print(build(publish=parser.parse_args().publish))

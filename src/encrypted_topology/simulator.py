@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -37,7 +38,7 @@ SIMULATION_REGISTRY = (
         "stationary multivariate exponential-kernel Hawkes process",
         True,
         "matched",
-        "Primary controlled-truth generator retained for the frozen factorial experiment.",
+        "Corrected primary controlled-truth generator for the registered factorial experiment.",
     ),
     SimulationFamily(
         "hawkes_mixture",
@@ -128,8 +129,11 @@ def _hawkes_cluster_times(
         parent_time, parent_mark = events[cursor]
         remaining = horizon - parent_time
         for target_mark, mass in enumerate(excitation[parent_mark]):
-            integrated_mass = mass * (1.0 - np.exp(-decay * remaining))
-            child_count = rng.poisson(integrated_mass)
+            # ``mass`` is the total branching mass on [0, infinity). Sample from
+            # that law once, then censor at the observation boundary. Multiplying
+            # by the finite-window CDF here and censoring below would truncate the
+            # same offspring distribution twice.
+            child_count = rng.poisson(mass)
             if child_count:
                 delays = rng.exponential(1.0 / decay, child_count)
                 events.extend(
@@ -184,6 +188,7 @@ def _cox_piecewise_times(
     events: list[tuple[float, int]] = []
     boundaries = np.linspace(0.0, horizon, 7)
     multipliers = rng.lognormal(mean=-0.18, sigma=0.60, size=6)
+    multipliers = multipliers / multipliers.mean()
     for start, stop, multiplier in zip(boundaries[:-1], boundaries[1:], multipliers, strict=True):
         width = stop - start
         for mark, rate in enumerate(baseline):
@@ -247,10 +252,19 @@ def simulate_network(
 ) -> SimulatedNetwork:
     """Generate truth-labelled node links and synthetic marked events under one DOE cell."""
 
+    if isinstance(seed, bool) or not isinstance(seed, (int, np.integer)) or seed < 0:
+        raise ValueError("seed must be a nonnegative integer")
+    seed = int(seed)
     if obfuscation not in OBFUSCATION_LEVELS:
         raise ValueError(f"unknown obfuscation level: {obfuscation}")
     if generator not in GENERATOR_FAMILIES:
         raise ValueError(f"unknown generator family: {generator}")
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in (nodes, blocks, max_events)):
+        raise TypeError("nodes, blocks, and max_events must be integers")
+    if not math.isfinite(horizon) or horizon <= 0:
+        raise ValueError("horizon must be a positive finite value")
+    if max_events < 40:
+        raise ValueError("max_events must be at least 40")
     if blocks < 2:
         raise ValueError("at least two blocks are required for binary link evaluation")
     if nodes < 2 * blocks or nodes % blocks:
@@ -303,17 +317,21 @@ def simulate_network(
             destinations.append(int(destination))
     elif obfuscation == "jitter":
         jitter = rng.normal(0.0, 0.20, len(times))
-        times = np.clip(np.asarray(times) + jitter, 0.0, horizon).tolist()
+        times = np.clip(
+            np.asarray(times) + jitter,
+            0.0,
+            np.nextafter(horizon, 0.0),
+        ).tolist()
 
     order = np.argsort(times, kind="stable")
     ordered_times = np.asarray(times)[order]
-    ordered_times = ordered_times - ordered_times[0]
     batch = EventBatch(
         torch.tensor(ordered_times, dtype=torch.float64),
         torch.tensor(np.asarray(sizes)[order], dtype=torch.float32),
         torch.tensor(np.asarray(sources)[order], dtype=torch.long),
         torch.tensor(np.asarray(destinations)[order], dtype=torch.long),
         tuple(f"synthetic-node-{index:03d}" for index in range(nodes)),
+        observation_horizon=horizon,
     )
     truth = connected[memberships[:, None], memberships[None, :]].astype(np.float32)
     np.fill_diagonal(truth, 0.0)

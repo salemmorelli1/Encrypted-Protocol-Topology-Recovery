@@ -1,4 +1,4 @@
-# Frozen Factorial and Robustness Protocol
+# Corrected Factorial and Robustness Protocol
 
 ## Primary factorial
 
@@ -23,8 +23,10 @@ same 18-column fixed design with seed-clustered standard errors. Every attempt a
 reason is retained. Latency is analyzed on the natural-log scale.
 
 The source CSV is hashed before and after analysis. The analyzer aborts if it changes and
-publishes the verified SHA-256 in the summary. The completed cell file is frozen and is not
-modified or rerun by version 1.1.0.
+publishes the verified SHA-256 in the summary. It also requires exact field order, the exact
+registered key set, complete status, and valid numeric ranges. The corrected 1,800-cell run
+is pending. Historical aggregates are quarantined because their source CSV is absent and
+their declared seed did not cover model initialization.
 
 ## Robustness experiment
 

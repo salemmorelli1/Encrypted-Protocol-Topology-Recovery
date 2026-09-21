@@ -25,22 +25,51 @@ def exponential_hawkes_log_likelihood(
 
     if times.ndim != 1 or marks.ndim != 1 or times.numel() != marks.numel():
         raise ValueError("times and marks must be aligned vectors")
+    if not times.is_floating_point():
+        raise TypeError("times must use a floating-point tensor")
+    integer_dtypes = {
+        torch.uint8,
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+    }
+    if marks.dtype not in integer_dtypes:
+        raise TypeError("marks must use an integer tensor")
     if baseline.ndim != 1:
         raise ValueError("baseline must be a vector")
+    if not all(value.is_floating_point() for value in (baseline, excitation_mass, decay)):
+        raise TypeError("Hawkes parameters must use floating-point tensors")
     m = baseline.numel()
     if excitation_mass.shape != (m, m) or decay.shape != (m, m):
         raise ValueError("Hawkes matrices must be square with one row per mark")
     if times.numel() == 0:
         raise ValueError("at least one event is required")
-    if torch.any(times[1:] < times[:-1]) or int(marks.min()) < 0 or int(marks.max()) >= m:
+    if not all(torch.isfinite(value).all() for value in (times, baseline, excitation_mass, decay)):
+        raise ValueError("Hawkes inputs and parameters must be finite")
+    if (
+        float(times[0]) < 0
+        or torch.any(times[1:] < times[:-1])
+        or int(marks.min()) < 0
+        or int(marks.max()) >= m
+    ):
         raise ValueError("times must be ordered and marks in range")
     if torch.any(baseline <= 0) or torch.any(excitation_mass < 0) or torch.any(decay <= 0):
         raise ValueError("invalid Hawkes parameters")
 
-    dtype, device = baseline.dtype, baseline.device
+    # Preserve the more precise of the timestamp and parameter dtypes. Otherwise
+    # a valid float64 event just below T can round up to T when float32 model
+    # parameters are used, spuriously collapsing the terminal exposure.
+    dtype = torch.promote_types(times.dtype, baseline.dtype)
+    device = baseline.device
     t = times.to(device=device, dtype=dtype)
     z = marks.to(device=device, dtype=torch.long)
+    baseline_values = baseline.to(dtype=dtype)
+    excitation_values = excitation_mass.to(dtype=dtype)
+    decay_values = decay.to(dtype=dtype)
     end = torch.as_tensor(horizon, device=device, dtype=dtype)
+    if end.numel() != 1 or not torch.isfinite(end):
+        raise ValueError("horizon must be a finite scalar")
     if end <= t[-1]:
         raise ValueError("horizon must be strictly later than the final event")
 
@@ -48,22 +77,24 @@ def exponential_hawkes_log_likelihood(
     tiny = torch.finfo(dtype).tiny
     for i in range(t.numel()):
         target = z[i]
-        intensity = baseline[target]
+        intensity = baseline_values[target]
         if i:
-            source = z[:i]
-            beta_values = decay[source, target]
             elapsed = t[i] - t[:i]
+            strictly_earlier = elapsed > 0
+            source = z[:i][strictly_earlier]
+            beta_values = decay_values[source, target]
+            elapsed = elapsed[strictly_earlier]
             intensity = intensity + torch.sum(
-                excitation_mass[source, target]
+                excitation_values[source, target]
                 * beta_values
                 * torch.exp(-beta_values * elapsed)
             )
         log_event = log_event + torch.log(torch.clamp_min(intensity, tiny))
 
-    base_compensator = end * torch.sum(baseline)
+    base_compensator = end * torch.sum(baseline_values)
     remaining = end - t
-    source_rows = excitation_mass[z]
-    decay_rows = decay[z]
+    source_rows = excitation_values[z]
+    decay_rows = decay_values[z]
     excitation_compensator = torch.sum(
         source_rows * (1.0 - torch.exp(-decay_rows * remaining[:, None]))
     )
@@ -91,4 +122,3 @@ class StableHawkesParameters(nn.Module):
         excitation = excitation / scale
         decay = F.softplus(self.raw_decay) + torch.finfo(self.raw_decay.dtype).eps
         return baseline, excitation, decay
-

@@ -17,8 +17,8 @@ The experiment follows seven steps:
    authentication tag only to the decryption component.
 4. Require every authenticated plaintext reconstruction to match its synthetic original
    byte for byte.
-5. Restrict topology recovery to event time, size, source index, destination index, and
-   synthetic node label.
+5. Restrict topology recovery to event time, size, source index, destination index,
+   synthetic node label, and observation horizon.
 6. Run a key-withheld negative control that invokes no decryption interface and produces
    zero plaintext outputs.
 7. Reserve deliberately weak toy ciphers for separately reviewed future experiments with

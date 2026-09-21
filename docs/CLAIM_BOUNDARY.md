@@ -2,19 +2,23 @@
 
 ## Supported by the repository
 
-- The exponential Hawkes event term and compensator are implemented and tested.
+- The exponential Hawkes event term and full-window compensator are implemented and tested.
+- Equal-time events do not excite one another; finite-window offspring are censored once.
 - The MAF transform is invertible to numerical tolerance and contributes its log Jacobian.
-- The controlled-truth `2 × 3 × 3 × 100` experiment is fully specified and restartable.
-- The completed factorial source is bound to SHA-256
-  `d19433ff32f2222655f5408810b9ed6fd59fa01ea461e05e3f1aa5a59977309a`.
-- Analyzer v1.0.2 reports 27 paired contrasts, endpoint-wise Holm correction, and a recorded
-  mixed-model-to-clustered-OLS fallback hierarchy without changing cell results.
+- The controlled-truth `2 × 3 × 3 × 100` experiment is specified and restartable.
+- Analyzer v1.2.0 validates exact keys, schema, numeric ranges, source hash, paired inference,
+  endpoint-wise Holm correction, and the mixed-model-to-clustered-OLS fallback hierarchy.
 - Five registered simulation families support matched, misspecified, and no-signal studies.
 - The isolated cryptography component performs authenticated AES-GCM round trips on generated
   plaintext with a temporary experiment-owned key and verifies byte-exact reconstruction.
 - A key-withheld software control invokes no decryption and emits no plaintext.
 
-## Supported after the separate robustness study completes
+The historical 1,800-row aggregate and its SHA-256 are retained for traceability only. The
+source result CSV is absent, model construction preceded cell seeding, and version 1.2.0
+corrects the simulation window. It is quarantined and supports no current architecture
+ranking or performance conclusion.
+
+## Supported after the registered studies complete
 
 - Architecture contrasts within each declared generator, perturbation, and sparsity cell.
 - Sensitivity of link metrics and latency to specific simulated forms of misspecification.
@@ -26,8 +30,7 @@
 - Breaking encryption, recovering keys, or recovering content without an authorized
   experiment-owned key.
 - Payload or message claims about any external communication.
-- Human identity, intent, or attribution.
-- Command-and-control identification or attribution.
+- Human identity, intent, attribution, or command-and-control identification.
 - Operational, field, intelligence, or SIGINT performance.
 - Generalization to event laws or perturbations absent from the registry.
 - Treating importance ESS as MCMC ESS or reporting rank-normalized R-hat for VI iterates.

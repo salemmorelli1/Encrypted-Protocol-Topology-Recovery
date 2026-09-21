@@ -11,3 +11,4 @@ reportlab>=4,<6
 pypdf>=5,<7
 pytest>=8,<10
 ruff>=0.6,<1
+mypy>=1.11,<3
